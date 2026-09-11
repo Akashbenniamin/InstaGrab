@@ -172,10 +172,14 @@ class HelperApi {
 
   async openFile(filepath?: string, filename?: string): Promise<boolean> {
     try {
+      if (!localStorage.getItem('insta_dl_token')) {
+        try { await this.autoPair(); } catch {}
+      }
+
       let response = await fetch(`${this.baseUrl}/api/open-file`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ filepath, filename })
+        body: JSON.stringify({ filepath, filename, title: filename })
       });
 
       if (response.status === 401 || response.status === 403) {
@@ -185,7 +189,7 @@ class HelperApi {
           response = await fetch(`${this.baseUrl}/api/open-file`, {
             method: 'POST',
             headers: this.getHeaders(),
-            body: JSON.stringify({ filepath, filename })
+            body: JSON.stringify({ filepath, filename, title: filename })
           });
         } catch {}
       }

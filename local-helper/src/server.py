@@ -1,10 +1,10 @@
 import os
 import subprocess
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, send_file
 from flask_cors import CORS
 from functools import wraps
 import time
-from .security import TokenManager, generate_token
+from .security import TokenManager, generate_token, is_safe_path
 
 def create_app(config, downloader, token_manager):
     app = Flask(__name__)
@@ -58,6 +58,11 @@ def create_app(config, downloader, token_manager):
         # Allow Pinterest domains (e.g. in.pinterest.com, www.pinterest.com, pinterest.com, pinterest.co.uk)
         if re.match(r'^https://([a-zA-Z0-9-]+\.)*pinterest\.[a-z.]+$', origin):
             return True
+        # Allow YouTube & Instagram
+        if re.match(r'^https://([a-zA-Z0-9-]+\.)*youtube\.com$', origin):
+            return True
+        if re.match(r'^https://([a-zA-Z0-9-]+\.)*instagram\.com$', origin):
+            return True
         # Allow browser extensions (Chrome, Edge, Brave, Firefox)
         if origin.startswith('chrome-extension://') or origin.startswith('moz-extension://') or origin.startswith('extension://'):
             return True
@@ -73,6 +78,17 @@ def create_app(config, downloader, token_manager):
         allowed_hosts = [f'127.0.0.1:{port}', f'localhost:{port}']
         if host not in allowed_hosts:
              return jsonify({'error': 'Invalid host'}), 403
+
+        # Allow browser file streaming via token query param or auth header
+        if request.path.startswith('/api/file/download/'):
+            token = request.args.get('token')
+            if not token:
+                auth_header = request.headers.get('Authorization', '')
+                if auth_header.startswith('Bearer '):
+                    token = auth_header.split(' ')[1]
+            if not token or not token_manager.verify_token(token):
+                return jsonify({'error': 'Unauthorized file access'}), 401
+            return
 
         origin = request.headers.get('Origin')
         if origin:
@@ -111,7 +127,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.0.6',
+            'version': '1.0.7',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0
@@ -250,6 +266,7 @@ def create_app(config, downloader, token_manager):
         data = request.json or {}
         filepath = data.get('filepath')
         filename = data.get('filename')
+        title = data.get('title')
         download_path = config.get_download_path()
         
         try:
@@ -258,15 +275,16 @@ def create_app(config, downloader, token_manager):
                 reveal_in_explorer(filepath)
                 return jsonify({'status': 'ok', 'opened': 'file'})
 
-            # 2. If filename provided, check if it exists in the download directory
-            if filename:
-                candidate = os.path.join(download_path, filename)
-                if os.path.exists(candidate):
-                    reveal_in_explorer(candidate)
-                    return jsonify({'status': 'ok', 'opened': 'file'})
+            # 2. If filename or title provided, check if it exists in the download directory
+            for name in [filename, title]:
+                if name:
+                    candidate = os.path.join(download_path, name)
+                    if os.path.exists(candidate):
+                        reveal_in_explorer(candidate)
+                        return jsonify({'status': 'ok', 'opened': 'file'})
 
             # 3. Fuzzy search: match normalized title in download directory
-            search_term = filename or (os.path.basename(filepath) if filepath else '')
+            search_term = filename or title or (os.path.basename(filepath) if filepath else '')
             if search_term and os.path.isdir(download_path):
                 import re
                 clean_search = re.sub(r'[\W_]+', '', search_term.lower()[:30])
@@ -278,13 +296,33 @@ def create_app(config, downloader, token_manager):
                             reveal_in_explorer(match_file)
                             return jsonify({'status': 'ok', 'opened': 'file', 'matched': f})
 
-            # 4. Fallback: open the download directory directly in File Explorer
-            if os.path.exists(download_path):
-                reveal_in_explorer(download_path)
-                return jsonify({'status': 'ok', 'opened': 'folder'})
-
-            return jsonify({'error': 'Path not found'}), 404
+            # 4. Fallback: ensure download directory exists and open it directly in File Explorer
+            os.makedirs(download_path, exist_ok=True)
+            reveal_in_explorer(download_path)
+            return jsonify({'status': 'ok', 'opened': 'folder'})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/file/download/<path:filename>', methods=['GET', 'OPTIONS'])
+    def file_download_stream(filename):
+        if request.method == 'OPTIONS':
+            return make_response('', 204)
+        download_path = config.get_download_path()
+        target_path = os.path.join(download_path, filename)
+        if is_safe_path(download_path, target_path) and os.path.isfile(target_path):
+            return send_file(target_path, as_attachment=True, download_name=os.path.basename(target_path))
+
+        # Fuzzy matching if exact filename has URL encoding discrepancies
+        import re
+        clean_search = re.sub(r'[\W_]+', '', filename.lower()[:30])
+        if clean_search and os.path.isdir(download_path):
+            for f in os.listdir(download_path):
+                clean_candidate = re.sub(r'[\W_]+', '', f.lower()[:30])
+                if clean_candidate and (clean_search in clean_candidate or clean_candidate in clean_search):
+                    match_file = os.path.join(download_path, f)
+                    if os.path.isfile(match_file):
+                        return send_file(match_file, as_attachment=True, download_name=f)
+
+        return jsonify({'error': 'File not found'}), 404
 
     return app

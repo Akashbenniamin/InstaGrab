@@ -35,7 +35,34 @@ async function checkHealth() {
   }
 }
 
-// Trigger download via Desktop Engine
+// Helper: Trigger native browser download
+function triggerBrowserDownload(fileUrl, filename) {
+  return new Promise((resolve) => {
+    if (!chrome.downloads || !chrome.downloads.download) {
+      resolve({ fallback: true });
+      return;
+    }
+    chrome.downloads.download(
+      {
+        url: fileUrl,
+        filename: filename,
+        conflictAction: 'uniquify',
+        saveAs: false
+      },
+      (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[InstaGrab] chrome.downloads error:', chrome.runtime.lastError.message);
+          resolve({ error: chrome.runtime.lastError.message });
+        } else {
+          console.log('[InstaGrab] Browser download started, id:', downloadId);
+          resolve({ downloadId });
+        }
+      }
+    );
+  });
+}
+
+// Trigger download via Desktop Engine, then invoke native browser download manager
 async function downloadMedia(url, formatType = 'video', quality = 'best') {
   let token = await getAuthToken();
   if (!token) {
@@ -47,6 +74,7 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
   }
 
   try {
+    // 1. Submit download request to Engine
     let resp = await fetch(`${HELPER_BASE}/api/download`, {
       method: 'POST',
       headers: {
@@ -56,12 +84,12 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
       },
       body: JSON.stringify({
         url: url,
-        format_type: formatType,
-        quality: quality
+        format_type: formatType || 'video',
+        quality: quality || 'best'
       })
     });
 
-    // If token expired, clear cache and retry once
+    // If token expired, refresh and retry once
     if (resp.status === 401 || resp.status === 403) {
       cachedToken = null;
       token = await getAuthToken();
@@ -81,8 +109,8 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
         },
         body: JSON.stringify({
           url: url,
-          format_type: formatType,
-          quality: quality
+          format_type: formatType || 'video',
+          quality: quality || 'best'
         })
       });
     }
@@ -92,8 +120,46 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
       return { success: false, error: errData.error || 'Failed to start download' };
     }
 
-    const data = await resp.json();
-    return { success: true, data };
+    const { downloadId } = await resp.json();
+
+    // 2. Poll for completion so we can pipe the completed file to the Browser Download Manager
+    const startTime = Date.now();
+    let completedFilename = null;
+
+    while (Date.now() - startTime < 180000) { // 3 minute timeout
+      await new Promise(r => setTimeout(r, 800));
+
+      try {
+        const sResp = await fetch(`${HELPER_BASE}/api/download/${downloadId}/status`, {
+          headers: {
+            'X-Requested-With': 'InstaGrab',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (sResp.ok) {
+          const status = await sResp.json();
+          if (status.state === 'complete') {
+            completedFilename = status.filename;
+            break;
+          } else if (status.state === 'error') {
+            return { success: false, error: status.error || 'Download failed during extraction' };
+          }
+        }
+      } catch (pollErr) {
+        console.warn('[InstaGrab] Polling error:', pollErr);
+      }
+    }
+
+    // 3. Trigger Browser Download Manager in Chrome/Edge/Brave!
+    if (completedFilename) {
+      const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(completedFilename)}?token=${token}`;
+      await triggerBrowserDownload(streamUrl, completedFilename);
+      return { success: true, filename: completedFilename, browserDownload: true };
+    }
+
+    // If polling timed out but engine is still running in background
+    return { success: true, background: true };
+
   } catch (err) {
     return { 
       success: false, 

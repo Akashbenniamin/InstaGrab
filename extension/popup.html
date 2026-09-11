@@ -10,7 +10,7 @@
       padding: 0;
     }
     body {
-      width: 320px;
+      width: 330px;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #0f1117;
@@ -30,6 +30,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
     .logo svg {
       width: 18px;
@@ -48,15 +49,15 @@
       color: #9ca3af;
     }
     .status-card {
-      padding: 10px 12px;
+      padding: 9px 12px;
       border-radius: 12px;
       background: #1a1e29;
       border: 1px solid #282f42;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 14px;
-      font-size: 12px;
+      margin-bottom: 12px;
+      font-size: 11.5px;
     }
     .status-badge {
       display: flex;
@@ -75,7 +76,7 @@
       box-shadow: 0 0 8px #10b981;
     }
     .input-box {
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .input-box input {
       width: 100%;
@@ -86,8 +87,57 @@
       color: #ffffff;
       font-size: 12px;
       outline: none;
+      transition: border-color 0.15s;
     }
     .input-box input:focus {
+      border-color: #E1306C;
+    }
+    /* Options row: Format pills & Quality dropdown */
+    .options-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .format-pills {
+      display: flex;
+      background: #161922;
+      border: 1px solid #282f42;
+      border-radius: 9px;
+      padding: 2px;
+      flex: 1;
+    }
+    .format-pill {
+      flex: 1;
+      padding: 5px 0;
+      border: none;
+      background: transparent;
+      color: #9ca3af;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 7px;
+      transition: all 0.15s;
+      text-align: center;
+    }
+    .format-pill.active {
+      background: #2a3144;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .quality-select {
+      background: #161922;
+      border: 1px solid #282f42;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 10px;
+      border-radius: 9px;
+      outline: none;
+      cursor: pointer;
+      min-width: 95px;
+    }
+    .quality-select:focus {
       border-color: #E1306C;
     }
     .btn-grab {
@@ -98,30 +148,44 @@
       background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%);
       color: white;
       font-weight: 700;
-      font-size: 12px;
+      font-size: 12.5px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
-      transition: opacity 0.15s;
+      transition: opacity 0.15s, transform 0.15s;
     }
     .btn-grab:hover {
-      opacity: 0.92;
+      opacity: 0.93;
+      transform: translateY(-1px);
+    }
+    .btn-grab:active {
+      transform: translateY(1px);
     }
     .btn-grab:disabled {
       opacity: 0.5;
       cursor: not-allowed;
+      transform: none;
     }
-    .notice {
-      margin-top: 12px;
-      font-size: 10.5px;
-      color: #6b7280;
+    .btn-grab svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      stroke-width: 2.3;
+      fill: none;
+    }
+    #msg {
+      margin-top: 10px;
+      font-size: 11px;
       text-align: center;
       line-height: 1.4;
+      display: none;
+      padding: 6px 8px;
+      border-radius: 8px;
     }
     .links {
-      margin-top: 10px;
+      margin-top: 12px;
       display: flex;
       justify-content: center;
       gap: 12px;
@@ -135,12 +199,6 @@
     .links a:hover {
       text-decoration: underline;
     }
-    #msg {
-      margin-top: 8px;
-      font-size: 11px;
-      text-align: center;
-      display: none;
-    }
   </style>
 </head>
 <body>
@@ -150,7 +208,7 @@
     </div>
     <div class="title">
       <h1>InstaGrab</h1>
-      <p>1-Click Downloader</p>
+      <p>Universal Media Downloader</p>
     </div>
   </div>
 
@@ -163,21 +221,32 @@
   </div>
 
   <div class="input-box">
-    <input type="text" id="url-input" placeholder="Paste link (Instagram, YT, Pinterest)..." />
+    <input type="text" id="url-input" placeholder="Paste link (Instagram, YouTube, Pinterest)..." />
+  </div>
+
+  <!-- Format & Quality Selection Controls -->
+  <div class="options-row">
+    <div class="format-pills">
+      <button type="button" class="format-pill active" id="btn-video" data-format="video">🎬 Video</button>
+      <button type="button" class="format-pill" id="btn-audio" data-format="audio">🎵 Audio</button>
+    </div>
+    <select id="quality-select" class="quality-select">
+      <option value="best">Best (Full HD)</option>
+      <option value="1080p">1080p</option>
+      <option value="720p">720p</option>
+      <option value="480p">480p</option>
+    </select>
   </div>
 
   <button id="download-btn" class="btn-grab">
-    <span>Download via Engine</span>
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    <span id="btn-text">Download to Browser</span>
   </button>
 
   <div id="msg"></div>
 
-  <div class="notice">
-    ✨ In-page "Grab" buttons are enabled on Pinterest! Browse pins and click directly.
-  </div>
-
   <div class="links">
-    <a href="https://akashbenniamin.github.io/InstaGrab/" target="_blank" id="open-web">Open Web App</a>
+    <a href="https://akashbenniamin.github.io/InstaGrab/" target="_blank" id="open-web">Open Full Web App</a>
   </div>
 
   <script src="popup.js"></script>

@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { HistoryEntry } from '../types';
-import { Clock, CheckCircle2, XCircle, Trash2, FolderOpen } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Trash2, FolderOpen, AlertCircle } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 
 interface Props {
@@ -8,6 +9,8 @@ interface Props {
 }
 
 export function DownloadHistory({ history, onClear }: Props) {
+  const [viewError, setViewError] = useState<string | null>(null);
+
   const formatTime = (ts: number) => {
     try {
       const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
@@ -28,9 +31,11 @@ export function DownloadHistory({ history, onClear }: Props) {
   };
 
   const handleView = async (entry: HistoryEntry) => {
+    setViewError(null);
     const opened = await helperApi.openFile(entry.filepath, entry.filename);
-    if (!opened && entry.url) {
-      window.open(entry.url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      setViewError('Could not open file in Explorer. Ensure Desktop Engine is running.');
+      setTimeout(() => setViewError(null), 4000);
     }
   };
 
@@ -56,6 +61,13 @@ export function DownloadHistory({ history, onClear }: Props) {
           </button>
         )}
       </div>
+
+      {viewError && (
+        <div className="px-4 py-2 bg-red-500/10 text-red-500 text-[11px] flex items-center gap-1.5 border-b border-red-500/20">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          <span>{viewError}</span>
+        </div>
+      )}
 
       {/* Content */}
       {history.length === 0 ? (

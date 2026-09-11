@@ -1,6 +1,6 @@
-/* InstaGrab - Pinterest Extension In-Page Styles */
+/* InstaGrab - Cross-Platform In-Page Styles (Pinterest, YouTube & Instagram) */
 
-/* 1. Grid Pin Container & Button (Circular, Icon-only, placed to the left of the Save button) */
+/* ================= 1. PINTEREST ================= */
 .instagrab-pin-container {
   position: relative !important;
 }
@@ -61,7 +61,7 @@
   background: #10b981 !important;
 }
 
-/* 2. Opened Post (Detail / Fullscreen View) Download Button in Text Fields */
+/* Pinterest Opened Post (in Text Fields) */
 .instagrab-opened-wrap {
   margin: 14px 0 10px 0 !important;
   display: block !important;
@@ -77,14 +77,14 @@
   padding: 10px 22px !important;
   background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
   color: #ffffff !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-size: 13px !important;
   font-weight: 700 !important;
   border-radius: 9999px !important;
   border: none !important;
   cursor: pointer !important;
   box-shadow: 0 6px 20px rgba(225, 48, 108, 0.45) !important;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, opacity 0.2s ease !important;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease !important;
   text-decoration: none !important;
   pointer-events: auto !important;
   user-select: none !important;
@@ -105,7 +105,6 @@
   stroke: currentColor !important;
   stroke-width: 2.3 !important;
   fill: none !important;
-  flex-shrink: 0 !important;
 }
 
 .instagrab-opened-btn.instagrab-loading {
@@ -121,12 +120,197 @@
   background: #10b981 !important;
 }
 
+/* ================= 2. YOUTUBE ================= */
+/* YouTube Watch Page Button */
+.instagrab-yt-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  height: 36px !important;
+  padding: 0 16px !important;
+  border-radius: 18px !important;
+  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  color: #ffffff !important;
+  font-family: Roboto, Arial, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin-right: 8px !important;
+  box-shadow: 0 3px 12px rgba(225, 48, 108, 0.35) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+  vertical-align: middle !important;
+}
+
+.instagrab-yt-btn:hover {
+  transform: scale(1.04) !important;
+  box-shadow: 0 4px 18px rgba(225, 48, 108, 0.55) !important;
+}
+
+.instagrab-yt-btn:active {
+  transform: scale(0.96) !important;
+}
+
+.instagrab-yt-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.3 !important;
+  fill: none !important;
+}
+
+.instagrab-yt-btn.instagrab-loading {
+  background: #272727 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-yt-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-yt-btn.instagrab-success {
+  background: #10b981 !important;
+}
+
+/* YouTube Shorts Action Button */
+.instagrab-yt-short-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin: 8px auto !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.instagrab-yt-short-btn:hover {
+  transform: scale(1.12) !important;
+  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.6) !important;
+}
+
+.instagrab-yt-short-btn svg {
+  width: 22px !important;
+  height: 22px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.3 !important;
+  fill: none !important;
+}
+
+.instagrab-yt-short-btn.instagrab-loading {
+  background: #272727 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-yt-short-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-yt-short-btn.instagrab-success {
+  background: #10b981 !important;
+}
+
+/* ================= 3. INSTAGRAM ================= */
+/* Instagram Post Button */
+.instagrab-ig-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin-left: 6px !important;
+  margin-right: 4px !important;
+  box-shadow: 0 3px 12px rgba(225, 48, 108, 0.35) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+  vertical-align: middle !important;
+}
+
+.instagrab-ig-btn:hover {
+  transform: scale(1.12) !important;
+  box-shadow: 0 5px 18px rgba(225, 48, 108, 0.55) !important;
+}
+
+.instagrab-ig-btn svg {
+  width: 18px !important;
+  height: 18px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.3 !important;
+  fill: none !important;
+}
+
+.instagrab-ig-btn.instagrab-loading {
+  background: #262626 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-ig-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-ig-btn.instagrab-success {
+  background: #10b981 !important;
+}
+
+/* Instagram Reels Action Button */
+.instagrab-ig-reel-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin: 10px auto !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.instagrab-ig-reel-btn:hover {
+  transform: scale(1.12) !important;
+  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.6) !important;
+}
+
+.instagrab-ig-reel-btn svg {
+  width: 20px !important;
+  height: 20px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.3 !important;
+  fill: none !important;
+}
+
+.instagrab-ig-reel-btn.instagrab-loading {
+  background: #262626 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-ig-reel-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-ig-reel-btn.instagrab-success {
+  background: #10b981 !important;
+}
+
+/* ================= 4. COMMON ANIMATIONS & TOAST ================= */
 @keyframes instagrab-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
-/* 3. Modern Toast Notifications on Pinterest Page */
 .instagrab-toast {
   position: fixed !important;
   bottom: 24px !important;
