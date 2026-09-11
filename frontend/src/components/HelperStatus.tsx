@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { HelperStatus as IHelperStatus } from '../types';
-import { Download, Play, HelpCircle, Loader2, Cpu, Zap, ChevronDown, Archive } from 'lucide-react';
+import { Download, Play, HelpCircle, Loader2, Cpu, Zap } from 'lucide-react';
 
 interface Props {
   status: IHelperStatus;
@@ -14,17 +14,12 @@ export function launchDesktopHelper() {
   iframe.src = 'instagrab://launch';
   document.body.appendChild(iframe);
   setTimeout(() => {
-    try {
-      document.body.removeChild(iframe);
-    } catch {
-      // Ignored
-    }
-  }, 3000);
+    try { document.body.removeChild(iframe); } catch {}
+  }, 2000);
 }
 
 export function HelperStatus({ status, onSetupClick, onPairClick }: Props) {
   const [isLaunching, setIsLaunching] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
 
   const handleLaunchClick = () => {
     setIsLaunching(true);
@@ -153,34 +148,6 @@ export function HelperStatus({ status, onSetupClick, onPairClick }: Props) {
               </>
             )}
           </button>
-        </div>
-
-        {/* More options toggle */}
-        <div className="text-center">
-          <button
-            type="button"
-            onClick={() => setShowOptions(!showOptions)}
-            className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1 transition-colors"
-          >
-            <span>Other formats (Portable ZIP)</span>
-            <ChevronDown className={`w-3 h-3 transition-transform ${showOptions ? 'rotate-180' : ''}`} />
-          </button>
-
-          {showOptions && (
-            <div className="mt-2 p-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] flex items-center justify-between text-xs">
-              <span className="text-[var(--text-secondary)] flex items-center gap-1">
-                <Archive className="w-3.5 h-3.5 text-insta-purple" />
-                Windows Portable (No Install Required)
-              </span>
-              <a
-                href="https://github.com/Akashbenniamin/InstaGrab/releases/latest/download/InstaGrab-Portable-Windows.zip"
-                download="InstaGrab-Portable-Windows.zip"
-                className="font-bold text-insta-pink hover:underline"
-              >
-                Download (.zip)
-              </a>
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -26,6 +26,33 @@
     --overlay-bg: rgba(0, 0, 0, 0.8);
   }
 
+  html.cyberpunk {
+    --bg-main: #080c18;
+    --bg-card: #0f172a;
+    --text-primary: #38bdf8;
+    --text-secondary: #94a3b8;
+    --border-color: #1e293b;
+    --overlay-bg: rgba(8, 12, 24, 0.85);
+  }
+
+  html.sunset {
+    --bg-main: #160c18;
+    --bg-card: #241327;
+    --text-primary: #fed7aa;
+    --text-secondary: #f472b6;
+    --border-color: #3f1b45;
+    --overlay-bg: rgba(22, 12, 24, 0.85);
+  }
+
+  html.oled {
+    --bg-main: #000000;
+    --bg-card: #0a0a0a;
+    --text-primary: #ffffff;
+    --text-secondary: #888888;
+    --border-color: #222222;
+    --overlay-bg: rgba(0, 0, 0, 0.95);
+  }
+
   body {
     @apply bg-[var(--bg-main)] text-[var(--text-primary)] transition-colors duration-300 antialiased min-h-screen;
   }

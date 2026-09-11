@@ -55,10 +55,18 @@ Root: HKCU; Subkey: "Software\Classes\instagrab\shell\open\command"; ValueType: 
 ; Launch after installation
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
+[InstallDelete]
+; Clean up previous internal directory to prevent DLL version conflicts during upgrades
+Type: filesandordirs; Name: "{app}\_internal"
+
 [UninstallRun]
 ; Kill the app before uninstalling
 Filename: "taskkill"; Parameters: "/F /IM ""{#MyAppExeName}"""; Flags: runhidden
 
 [UninstallDelete]
-; Clean up config directory
+; Clean up application installation directory
+Type: filesandordirs; Name: "{app}"
+; Clean up user configuration and token data directory
 Type: filesandordirs; Name: "{userappdata}\InstaGrab"
+; Clean up local app data directory
+Type: filesandordirs; Name: "{localappdata}\InstaGrabHelper"

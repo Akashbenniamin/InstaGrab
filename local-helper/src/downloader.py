@@ -74,6 +74,10 @@ class Downloader:
                     pct = 0.0
                 
                 speed = d.get('_speed_str', '')
+                if speed:
+                    import re
+                    speed = re.sub(r'\x1b\[[0-9;]*m', '', speed)
+                    speed = speed.replace('MiB/s', ' MB/s').replace('KiB/s', ' KB/s').replace('GiB/s', ' GB/s').strip()
                 eta = d.get('_eta_str', '')
                 filename = os.path.basename(d.get('filename', ''))
                 

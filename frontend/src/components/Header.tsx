@@ -1,12 +1,14 @@
-import { Download } from 'lucide-react';
+import { Download, Settings } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
+import { Theme } from '../hooks/useTheme';
 
 interface Props {
-  theme: 'light' | 'dark';
+  theme: Theme;
   toggleTheme: () => void;
+  onOpenSettings: () => void;
 }
 
-export function Header({ theme, toggleTheme }: Props) {
+export function Header({ theme, toggleTheme, onOpenSettings }: Props) {
   return (
     <header className="flex items-center justify-between py-6">
       <div className="flex items-center space-x-3">
@@ -20,7 +22,17 @@ export function Header({ theme, toggleTheme }: Props) {
           </p>
         </div>
       </div>
-      <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+      <div className="flex items-center space-x-1.5">
+        <button
+          onClick={onOpenSettings}
+          className="p-2 rounded-xl hover:bg-gray-200/70 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300 cursor-pointer"
+          title="Settings (Download Folder, Themes & Options)"
+          aria-label="Settings"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+        <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+      </div>
     </header>
   );
 }

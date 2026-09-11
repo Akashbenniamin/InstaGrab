@@ -197,18 +197,27 @@ def create_app(config, downloader, token_manager):
             return '', 204
         data = request.json or {}
         filepath = data.get('filepath')
+        filename = data.get('filename')
         download_path = config.get_download_path()
         
-        import subprocess
         try:
+            # 1. If exact filepath exists, highlight file in Windows File Explorer
             if filepath and os.path.exists(filepath):
-                # On Windows, explorer /select,"<filepath>" opens File Explorer with file highlighted!
-                subprocess.Popen(['explorer', f'/select,{os.path.normpath(filepath)}'])
+                os.system(f'explorer /select,"{os.path.normpath(filepath)}"')
                 return jsonify({'status': 'ok', 'opened': 'file'})
-            elif os.path.exists(download_path):
-                # If specific file is missing, open the download folder
-                subprocess.Popen(['explorer', os.path.normpath(download_path)])
+
+            # 2. If filename provided, check if it exists in the download directory
+            if filename:
+                candidate = os.path.join(download_path, filename)
+                if os.path.exists(candidate):
+                    os.system(f'explorer /select,"{os.path.normpath(candidate)}"')
+                    return jsonify({'status': 'ok', 'opened': 'file'})
+
+            # 3. Fallback: open the download directory directly in File Explorer
+            if os.path.exists(download_path):
+                os.startfile(download_path)
                 return jsonify({'status': 'ok', 'opened': 'folder'})
+
             return jsonify({'error': 'Path not found'}), 404
         except Exception as e:
             return jsonify({'error': str(e)}), 500

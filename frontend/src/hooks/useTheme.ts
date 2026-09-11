@@ -1,24 +1,54 @@
 import { useState, useEffect } from 'react';
 
-type Theme = 'light' | 'dark';
+export type Theme = 'system' | 'dark' | 'light' | 'cyberpunk' | 'sunset' | 'oled';
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('insta_dl_theme');
-    if (saved === 'light' || saved === 'dark') return saved;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const saved = localStorage.getItem('insta_dl_theme') as Theme;
+    if (['system', 'dark', 'light', 'cyberpunk', 'sunset', 'oled'].includes(saved)) {
+      return saved;
+    }
+    return 'system';
   });
 
   useEffect(() => {
     localStorage.setItem('insta_dl_theme', theme);
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+
+    const applyTheme = () => {
+      const classesToRemove = ['dark', 'light', 'cyberpunk', 'sunset', 'oled'];
+      document.documentElement.classList.remove(...classesToRemove);
+
+      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const effectiveTheme = theme === 'system' ? (isSystemDark ? 'dark' : 'light') : theme;
+
+      if (effectiveTheme === 'light') {
+        document.documentElement.classList.add('light');
+      } else {
+        // Apply dark base for tailwind dark: modifiers, plus the specific theme class
+        document.documentElement.classList.add('dark');
+        if (effectiveTheme !== 'dark') {
+          document.documentElement.classList.add(effectiveTheme);
+        }
+      }
+    };
+
+    applyTheme();
+
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      mediaQuery.addEventListener('change', applyTheme);
+      return () => mediaQuery.removeEventListener('change', applyTheme);
     }
   }, [theme]);
 
-  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  const toggleTheme = () => {
+    // Quick toggle between dark and light
+    setTheme(prev => {
+      if (prev === 'light') return 'dark';
+      return 'light';
+    });
+  };
 
-  return { theme, toggleTheme };
+  return { theme, setTheme, toggleTheme };
 }
+

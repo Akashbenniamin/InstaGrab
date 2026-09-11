@@ -28,13 +28,8 @@ export function DownloadHistory({ history, onClear }: Props) {
   };
 
   const handleView = async (entry: HistoryEntry) => {
-    if (entry.filepath) {
-      const opened = await helperApi.openFile(entry.filepath);
-      if (opened) return;
-    }
-    // Fallback: open downloads folder
-    const openedFolder = await helperApi.openFile();
-    if (!openedFolder && entry.url) {
+    const opened = await helperApi.openFile(entry.filepath, entry.filename);
+    if (!opened && entry.url) {
       window.open(entry.url, '_blank', 'noopener,noreferrer');
     }
   };

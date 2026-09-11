@@ -17,6 +17,15 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
     await helperApi.openFile(filepath);
   };
 
+  const formatSpeed = (speed?: string) => {
+    if (!speed) return '';
+    return speed
+      .replace(/MiB\/s/gi, 'MB/s')
+      .replace(/KiB\/s/gi, 'KB/s')
+      .replace(/GiB\/s/gi, 'GB/s')
+      .replace(/B\/s/gi, 'B/s');
+  };
+
   const activeCount = downloads.filter(d => !['complete', 'error', 'cancelled'].includes(d.state)).length;
   const completedCount = downloads.length - activeCount;
 
@@ -141,7 +150,7 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
 
             {/* Speed & ETA */}
             <div className="flex justify-between text-[11px] text-[var(--text-secondary)]">
-              <div>{item.speed && <span>Speed: {item.speed}</span>}</div>
+              <div>{item.speed && <span>Speed: {formatSpeed(item.speed)}</span>}</div>
               <div>{item.eta && <span>ETA: {item.eta}</span>}</div>
             </div>
 

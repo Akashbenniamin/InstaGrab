@@ -16,9 +16,10 @@ import { SetupGuide } from './components/SetupGuide';
 import { DownloadHistory } from './components/DownloadHistory';
 import { PrivacyNotice } from './components/PrivacyNotice';
 import { MobileNotice } from './components/MobileNotice';
+import { SettingsModal } from './components/SettingsModal';
 
 function App() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme, toggleTheme } = useTheme();
   const { status, pair } = useHelperConnection();
   const { 
     downloads, 
@@ -35,6 +36,7 @@ function App() {
   const [videoQuality, setVideoQuality] = useState<VideoQuality>('best');
   const [audioQuality, setAudioQuality] = useState<AudioQuality>('best');
   const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   useEffect(() => {
@@ -69,10 +71,6 @@ function App() {
 
     const targetUrl = normalized!;
     const quality = formatType === 'video' ? videoQuality : audioQuality;
-    
-    // Reset input immediately so user can queue another download right away!
-    setUrl('');
-    setUrlError('');
 
     await startDownload(targetUrl, formatType, quality);
   };
@@ -85,7 +83,11 @@ function App() {
   return (
     <div className="min-h-screen bg-[var(--bg-main)]">
       <div className="max-w-6xl mx-auto px-4 pb-12 sm:px-6 lg:px-8">
-        <Header theme={theme} toggleTheme={toggleTheme} />
+        <Header 
+          theme={theme} 
+          toggleTheme={toggleTheme} 
+          onOpenSettings={() => setIsSettingsOpen(true)} 
+        />
         
         <div className="mt-8 flex flex-col lg:flex-row gap-8 items-start">
           {/* Left Column: Recent Downloads (Sticky on desktop, utilizing free empty space) */}
@@ -155,6 +157,14 @@ function App() {
       <SetupGuide 
         isOpen={isSetupOpen}
         onClose={() => setIsSetupOpen(false)}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        theme={theme}
+        setTheme={setTheme}
+        status={status}
       />
     </div>
   );

@@ -53,6 +53,11 @@ export function useDownload() {
                     timestamp: Date.now(),
                     success: true
                   });
+
+                  // Automatically remove finished task from bottom section after 3.5 seconds
+                  setTimeout(() => {
+                    setDownloads(current => current.filter(d => d.id !== job.id));
+                  }, 3500);
                 } else if (status.state === 'error') {
                   addEntry({
                     id: job.id,

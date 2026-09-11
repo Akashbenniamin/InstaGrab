@@ -1,4 +1,4 @@
-import { X, Download, Server, CheckCircle, Cpu, Zap, Archive } from 'lucide-react';
+import { X, Download, Server, CheckCircle, Cpu, Zap } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -63,15 +63,6 @@ export function SetupGuide({ isOpen, onClose }: Props) {
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Windows Installer (.exe)</span>
-                  </a>
-
-                  <a 
-                    href="https://github.com/Akashbenniamin/InstaGrab/releases/latest/download/InstaGrab-Portable-Windows.zip" 
-                    download="InstaGrab-Portable-Windows.zip"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-[var(--text-primary)]"
-                  >
-                    <Archive className="w-3.5 h-3.5 text-insta-purple" />
-                    <span>Portable (.zip)</span>
                   </a>
                 </div>
               </div>

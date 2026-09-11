@@ -19,7 +19,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
@@ -41,10 +41,6 @@ jobs:
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" local-helper/installer/setup.iss
 
-      - name: Create Portable Zip
-        run: |
-          Compress-Archive -Path "local-helper/dist/InstaGrab Helper/*" -DestinationPath "local-helper/dist/InstaGrab-Portable-Windows.zip" -Force
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -55,4 +51,3 @@ jobs:
           generate_release_notes: true
           files: |
             local-helper/dist/InstaGrab-Helper-Setup*.exe
-            local-helper/dist/InstaGrab-Portable-Windows.zip

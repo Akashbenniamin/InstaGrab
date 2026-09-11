@@ -170,17 +170,81 @@ class HelperApi {
     });
   }
 
-  async openFile(filepath?: string): Promise<boolean> {
+  async openFile(filepath?: string, filename?: string): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/open-file`, {
+      let response = await fetch(`${this.baseUrl}/api/open-file`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ filepath })
+        body: JSON.stringify({ filepath, filename })
       });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('insta_dl_token');
+        try {
+          await this.autoPair();
+          response = await fetch(`${this.baseUrl}/api/open-file`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ filepath, filename })
+          });
+        } catch {}
+      }
+
       return response.ok;
     } catch (e) {
       console.error('Failed to open file:', e);
       return false;
+    }
+  }
+
+  async updateDownloadPath(downloadPath: string): Promise<boolean> {
+    try {
+      let response = await fetch(`${this.baseUrl}/api/config`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ download_path: downloadPath })
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('insta_dl_token');
+        try {
+          await this.autoPair();
+          response = await fetch(`${this.baseUrl}/api/config`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({ download_path: downloadPath })
+          });
+        } catch {}
+      }
+
+      return response.ok;
+    } catch (e) {
+      console.error('Failed to update download path:', e);
+      return false;
+    }
+  }
+
+  async getConfig(): Promise<{ download_path?: string } | null> {
+    try {
+      let response = await fetch(`${this.baseUrl}/api/config`, {
+        headers: this.getHeaders()
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('insta_dl_token');
+        try {
+          await this.autoPair();
+          response = await fetch(`${this.baseUrl}/api/config`, {
+            headers: this.getHeaders()
+          });
+        } catch {}
+      }
+
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (e) {
+      console.error('Failed to get config:', e);
+      return null;
     }
   }
 }

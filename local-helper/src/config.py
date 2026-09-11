@@ -12,7 +12,7 @@ class Config:
         self.config_file = os.path.join(self.config_dir, 'config.json')
         
         self.settings = {
-            'download_path': os.path.join(os.path.expanduser('~'), 'Downloads', 'Instagram'),
+            'download_path': os.path.join(os.path.expanduser('~'), 'Downloads', 'InstaGrab'),
             'port': 18765,
             'allowed_origins': ["http://localhost:5173", "http://127.0.0.1:5173"],
             'use_browser_cookies': False,
