@@ -8,13 +8,17 @@
 }
 
 @layer base {
-  :root {
+  :root, html.light {
     --bg-main: #f9fafb;
     --bg-card: #ffffff;
     --text-primary: #111827;
     --text-secondary: #4b5563;
     --border-color: #e5e7eb;
     --overlay-bg: rgba(0, 0, 0, 0.5);
+    --btn-primary-bg: linear-gradient(to top right, #FCAF45, #E1306C, #833AB4);
+    --btn-primary-text: #ffffff;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(225, 48, 108, 0.4);
+    --accent-color: #E1306C;
   }
 
   html.dark {
@@ -24,6 +28,24 @@
     --text-secondary: #9ca3af;
     --border-color: #374151;
     --overlay-bg: rgba(0, 0, 0, 0.8);
+    --btn-primary-bg: linear-gradient(to top right, #FCAF45, #E1306C, #833AB4);
+    --btn-primary-text: #ffffff;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(225, 48, 108, 0.4);
+    --accent-color: #E1306C;
+  }
+
+  /* Creators Bay / Modern Blue SaaS Theme */
+  html.creators {
+    --bg-main: #f8fafc;
+    --bg-card: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --border-color: #e2e8f0;
+    --overlay-bg: rgba(15, 23, 42, 0.5);
+    --btn-primary-bg: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+    --btn-primary-text: #ffffff;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.45);
+    --accent-color: #0284c7;
   }
 
   html.cyberpunk {
@@ -33,6 +55,10 @@
     --text-secondary: #94a3b8;
     --border-color: #1e293b;
     --overlay-bg: rgba(8, 12, 24, 0.85);
+    --btn-primary-bg: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
+    --btn-primary-text: #ffffff;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.5);
+    --accent-color: #38bdf8;
   }
 
   html.sunset {
@@ -42,6 +68,10 @@
     --text-secondary: #f472b6;
     --border-color: #3f1b45;
     --overlay-bg: rgba(22, 12, 24, 0.85);
+    --btn-primary-bg: linear-gradient(135deg, #f59e0b 0%, #f43f5e 50%, #be185d 100%);
+    --btn-primary-text: #ffffff;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.5);
+    --accent-color: #f43f5e;
   }
 
   html.oled {
@@ -51,6 +81,10 @@
     --text-secondary: #888888;
     --border-color: #222222;
     --overlay-bg: rgba(0, 0, 0, 0.95);
+    --btn-primary-bg: #ffffff;
+    --btn-primary-text: #000000;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(255, 255, 255, 0.25);
+    --accent-color: #ffffff;
   }
 
   body {

@@ -105,7 +105,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.0.2',
+            'version': '1.0.5',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0
@@ -208,9 +208,9 @@ def create_app(config, downloader, token_manager):
         creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
 
         if os.path.isfile(target_path):
-            subprocess.Popen(['explorer.exe', f'/select,{target_path}'], creationflags=creationflags)
-        elif os.path.isdir(target_path):
-            subprocess.Popen(['explorer.exe', target_path], creationflags=creationflags)
+            subprocess.Popen(f'explorer.exe /select,"{target_path}"', creationflags=creationflags)
+        else:
+            subprocess.Popen(f'explorer.exe "{target_path}"', creationflags=creationflags)
 
         # Bring the Explorer window to front
         time.sleep(0.35)
@@ -225,7 +225,7 @@ def create_app(config, downloader, token_manager):
                         user32.GetWindowTextW(hwnd, buff, length + 1)
                         title = buff.value
                         folder_name = os.path.basename(os.path.dirname(target_path) if os.path.isfile(target_path) else target_path)
-                        if folder_name and folder_name.lower() in title.lower():
+                        if not folder_name or folder_name.lower() in title.lower():
                             user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                             user32.SetForegroundWindow(hwnd)
                             return False
@@ -259,7 +259,20 @@ def create_app(config, downloader, token_manager):
                     reveal_in_explorer(candidate)
                     return jsonify({'status': 'ok', 'opened': 'file'})
 
-            # 3. Fallback: open the download directory directly in File Explorer
+            # 3. Fuzzy search: match normalized title in download directory
+            search_term = filename or (os.path.basename(filepath) if filepath else '')
+            if search_term and os.path.isdir(download_path):
+                import re
+                clean_search = re.sub(r'[\W_]+', '', search_term.lower()[:30])
+                if clean_search:
+                    for f in os.listdir(download_path):
+                        clean_candidate = re.sub(r'[\W_]+', '', f.lower()[:30])
+                        if clean_candidate and (clean_search in clean_candidate or clean_candidate in clean_search):
+                            match_file = os.path.join(download_path, f)
+                            reveal_in_explorer(match_file)
+                            return jsonify({'status': 'ok', 'opened': 'file', 'matched': f})
+
+            # 4. Fallback: open the download directory directly in File Explorer
             if os.path.exists(download_path):
                 reveal_in_explorer(download_path)
                 return jsonify({'status': 'ok', 'opened': 'folder'})

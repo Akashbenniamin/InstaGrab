@@ -63,6 +63,15 @@ const THEME_OPTIONS: ThemeOption[] = [
     accent: '#E1306C'
   },
   {
+    id: 'creators',
+    name: 'Creators Blue',
+    description: 'Modern SaaS aesthetic with clean slate and vibrant royal blue accents',
+    badge: 'Requested',
+    previewBg: 'bg-[#f8fafc]',
+    previewCard: 'bg-[#ffffff]',
+    accent: '#2563eb'
+  },
+  {
     id: 'cyberpunk',
     name: 'Cyberpunk Neon',
     description: 'Electric cyan and deep indigo futuristic style',
@@ -400,9 +409,10 @@ export const SettingsModal: React.FC<Props> = ({
                 </div>
 
                 <a
-                  href="/instagrab-extension.zip"
+                  href={`${import.meta.env.BASE_URL}instagrab-extension.zip`}
                   download="instagrab-extension.zip"
-                  className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl insta-gradient text-white text-xs font-bold hover:opacity-95 shadow-xs transition-opacity cursor-pointer text-center"
+                  className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white text-xs font-bold hover:opacity-95 shadow-xs transition-opacity cursor-pointer text-center"
+                  style={{ background: 'var(--btn-primary-bg)' }}
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download Extension (.zip)</span>

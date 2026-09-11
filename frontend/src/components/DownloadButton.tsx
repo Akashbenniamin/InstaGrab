@@ -35,9 +35,14 @@ export function DownloadButton({ onClick, disabled, loading, formatType = 'video
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
+      style={{
+        background: disabled ? undefined : 'var(--btn-primary-bg)',
+        color: disabled ? undefined : 'var(--btn-primary-text)',
+        boxShadow: disabled ? undefined : 'var(--btn-primary-shadow)'
+      }}
       className={`
-        w-full py-4 px-6 rounded-2xl flex items-center justify-center text-lg font-semibold text-white transition-all transform active:scale-98 shadow-lg cursor-pointer
-        ${disabled ? 'bg-gray-400 dark:bg-gray-700 cursor-not-allowed opacity-70' : 'insta-gradient hover:opacity-95'}
+        w-full py-4 px-6 rounded-2xl flex items-center justify-center text-lg font-semibold transition-all transform active:scale-98 cursor-pointer
+        ${disabled ? 'bg-gray-300 text-gray-500 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed opacity-60' : 'hover:opacity-95 hover:brightness-105'}
       `}
     >
       {getButtonContent()}

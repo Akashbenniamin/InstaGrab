@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 
-export type Theme = 'system' | 'dark' | 'light' | 'cyberpunk' | 'sunset' | 'oled';
+export type Theme = 'system' | 'dark' | 'light' | 'creators' | 'cyberpunk' | 'sunset' | 'oled';
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('insta_dl_theme') as Theme;
-    if (['system', 'dark', 'light', 'cyberpunk', 'sunset', 'oled'].includes(saved)) {
+    if (['system', 'dark', 'light', 'creators', 'cyberpunk', 'sunset', 'oled'].includes(saved)) {
       return saved;
     }
     return 'system';
@@ -15,7 +15,7 @@ export function useTheme() {
     localStorage.setItem('insta_dl_theme', theme);
 
     const applyTheme = () => {
-      const classesToRemove = ['dark', 'light', 'cyberpunk', 'sunset', 'oled'];
+      const classesToRemove = ['dark', 'light', 'creators', 'cyberpunk', 'sunset', 'oled'];
       document.documentElement.classList.remove(...classesToRemove);
 
       const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -23,6 +23,8 @@ export function useTheme() {
 
       if (effectiveTheme === 'light') {
         document.documentElement.classList.add('light');
+      } else if (effectiveTheme === 'creators') {
+        document.documentElement.classList.add('creators');
       } else {
         // Apply dark base for tailwind dark: modifiers, plus the specific theme class
         document.documentElement.classList.add('dark');
