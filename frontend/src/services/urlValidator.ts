@@ -30,7 +30,7 @@ export function validateMediaUrl(url: string): ValidationResult {
 
   // 1. Instagram
   if (hostname.includes('instagram.com') || hostname.includes('instagr.am')) {
-    const match = pathname.match(/\/(?:p|reel|tv)\/([^\/?#&]+)/);
+    const match = pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([^\/?#&]+)/);
     if (!match) {
       return { 
         valid: false, 
@@ -39,10 +39,9 @@ export function validateMediaUrl(url: string): ValidationResult {
       };
     }
 
-    const typeMatch = pathname.match(/\/(p|reel|tv)\//);
-    const contentType = (typeMatch ? typeMatch[1] : 'post') as 'reel' | 'post' | 'tv';
     const shortcode = match[1];
-    const normalized = `https://www.instagram.com/${contentType}/${shortcode}/`;
+    const contentType = (pathname.includes('reel') ? 'reel' : (pathname.includes('tv') ? 'tv' : 'post')) as 'reel' | 'post' | 'tv';
+    const normalized = `https://www.instagram.com/${contentType === 'post' ? 'p' : contentType}/${shortcode}/`;
 
     return {
       valid: true,

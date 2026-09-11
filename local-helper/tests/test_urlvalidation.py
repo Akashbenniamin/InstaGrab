@@ -7,7 +7,12 @@ def test_valid_instagram_urls():
         "http://instagram.com/p/ABCDEF/",
         "https://instagr.am/tv/xyz123",
         "https://www.instagram.com/reel/C123456789/?igsh=123456",
-        "https://instagram.com/p/ABCDEF"
+        "https://instagram.com/p/ABCDEF",
+        "https://www.instagram.com/explorewithepaphra/reel/DF-mGq-z_0Z/",
+        "https://www.instagram.com/explorewithepaphra/reel/DF-mGq-z_0Z/?igsh=MWQ1ZGUxMzBkMA==",
+        "https://www.instagram.com/explorewithepaphra/reels/DF-mGq-z_0Z/",
+        "https://www.instagram.com/reels/DF-mGq-z_0Z/",
+        "https://www.instagram.com/share/reel/DF-mGq-z_0Z/"
     ]
     for url in valid_urls:
         valid, msg, platform = validate_media_url(url)

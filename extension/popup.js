@@ -136,6 +136,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    url = normalizeMediaUrl(url);
+
     downloadBtn.disabled = true;
     btnText.textContent = 'Processing...';
 
@@ -159,6 +161,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     );
   });
+
+  function normalizeMediaUrl(rawUrl) {
+    if (!rawUrl) return rawUrl;
+    try {
+      let uStr = rawUrl.trim();
+      if (!uStr.startsWith('http://') && !uStr.startsWith('https://')) {
+        uStr = 'https://' + uStr;
+      }
+      const u = new URL(uStr);
+      if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
+        const match = u.pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+        if (match) {
+          const type = u.pathname.includes('reel') ? 'reel' : (u.pathname.includes('tv') ? 'tv' : 'p');
+          return `https://www.instagram.com/${type}/${match[1]}/`;
+        }
+      }
+    } catch {}
+    return rawUrl;
+  }
 
   function showMessage(text, isError) {
     msgEl.textContent = text;

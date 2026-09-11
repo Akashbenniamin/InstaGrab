@@ -1,15 +1,13 @@
 import os
 import subprocess
 import ctypes
-try:
-    import win32com.client
-except ImportError:
-    win32com = None
+from ctypes import wintypes
+import re
 from flask import Flask, request, jsonify, make_response, send_file
 from flask_cors import CORS
 from functools import wraps
 import time
-from .security import TokenManager, generate_token, is_safe_path
+from .security import TokenManager, generate_token, is_safe_path, validate_media_url
 
 def create_app(config, downloader, token_manager):
     app = Flask(__name__)
@@ -132,7 +130,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.0.8',
+            'version': '1.0.9',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0
@@ -179,6 +177,18 @@ def create_app(config, downloader, token_manager):
         url = data.get('url')
         if not url:
             return jsonify({'error': 'URL required'}), 400
+
+        is_valid, err_msg, platform = validate_media_url(url)
+        if not is_valid:
+            return jsonify({'error': err_msg}), 400
+
+        # Canonical normalization for Instagram URLs
+        if platform == 'instagram':
+            match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+            if match:
+                shortcode = match.group(1)
+                content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
+                url = f"https://www.instagram.com/{content_type}/{shortcode}/"
             
         format_type = data.get('format_type', 'video')
         quality = data.get('quality', 'best')
@@ -218,96 +228,62 @@ def create_app(config, downloader, token_manager):
                     config.set(k, data[k])
             return jsonify(config.settings)
 
-    def bring_window_to_front(hwnd):
-        try:
-            user32 = ctypes.windll.user32
-            kernel32 = ctypes.windll.kernel32
-            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            user32.BringWindowToTop(hwnd)
-            user32.keybd_event(0x12, 0, 0, 0)
-            user32.keybd_event(0x12, 0, 2, 0)
-            fg_hwnd = user32.GetForegroundWindow()
-            if fg_hwnd and fg_hwnd != hwnd:
-                fg_thread = user32.GetWindowThreadProcessId(fg_hwnd, None)
-                cur_thread = kernel32.GetCurrentThreadId()
-                user32.AttachThreadInput(cur_thread, fg_thread, True)
-                user32.SetForegroundWindow(hwnd)
-                user32.SetFocus(hwnd)
-                user32.AttachThreadInput(cur_thread, fg_thread, False)
-            else:
-                user32.SetForegroundWindow(hwnd)
-            SWP_FLAGS = 0x0001 | 0x0002 | 0x0040
-            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, SWP_FLAGS)
-            user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, SWP_FLAGS)
-        except Exception:
-            pass
-
     def reveal_in_explorer(target_path):
         target_path = os.path.abspath(os.path.normpath(target_path))
         is_file = os.path.isfile(target_path)
         folder_path = os.path.dirname(target_path) if is_file else target_path
-        filename = os.path.basename(target_path) if is_file else None
 
-        # 1. Reuse existing open Explorer window if present
-        try:
-            if win32com:
-                shell = win32com.client.Dispatch('Shell.Application')
-                windows = shell.Windows()
-                for i in range(windows.Count):
-                    w = windows.Item(i)
-                    if w is None:
-                        continue
-                    try:
-                        p = getattr(w.Document.Folder.Self, 'Path', None)
-                        if p and os.path.exists(p) and os.path.exists(folder_path) and os.path.samefile(p, folder_path):
-                            if is_file and filename:
-                                item = w.Document.Folder.ParseName(filename)
-                                if item:
-                                    w.Document.SelectItem(item, 29)
-                            bring_window_to_front(w.HWND)
-                            return True
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-
-        # 2. Open folder using ShellExecuteW (never hangs, no console popup, no orphaned processes)
+        # 1. Allow newly launched Explorer process to take foreground focus
         try:
             ctypes.windll.user32.AllowSetForegroundWindow(-1)
-            ret = ctypes.windll.shell32.ShellExecuteW(None, 'open', folder_path, None, None, 1)
-            if ret > 32:
-                time.sleep(0.4)
-                try:
-                    if win32com:
-                        shell = win32com.client.Dispatch('Shell.Application')
-                        windows = shell.Windows()
-                        for i in range(windows.Count):
-                            w = windows.Item(i)
-                            if w is None:
-                                continue
-                            try:
-                                p = getattr(w.Document.Folder.Self, 'Path', None)
-                                if p and os.path.exists(p) and os.path.exists(folder_path) and os.path.samefile(p, folder_path):
-                                    if is_file and filename:
-                                        item = w.Document.Folder.ParseName(filename)
-                                        if item:
-                                            w.Document.SelectItem(item, 29)
-                                    bring_window_to_front(w.HWND)
-                                    break
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
-                return True
         except Exception:
             pass
 
-        # 3. Fallback: os.startfile
+        # 2. Launch Explorer directly with shell=False (ZERO terminal/cmd popup, GUI subsystem)
         try:
-            os.startfile(folder_path)
-            return True
+            if is_file:
+                cmd = f'explorer.exe /select,"{target_path}"'
+            else:
+                cmd = f'explorer.exe "{target_path}"'
+            
+            p = subprocess.Popen(cmd, shell=False)
+            p.wait(timeout=2)
         except Exception:
-            return False
+            try:
+                os.startfile(folder_path)
+            except Exception:
+                pass
+
+        # 3. Bring the Explorer window to front above browser
+        try:
+            time.sleep(0.2)
+            user32 = ctypes.windll.user32
+            folder_name = os.path.basename(folder_path)
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_ssize_t)
+            def enum_handler(hwnd, lparam):
+                if user32.IsWindowVisible(hwnd):
+                    class_buff = ctypes.create_unicode_buffer(256)
+                    user32.GetClassNameW(hwnd, class_buff, 256)
+                    if class_buff.value in ('CabinetWClass', 'ExploreWClass'):
+                        length = user32.GetWindowTextLengthW(hwnd)
+                        if length > 0:
+                            buff = ctypes.create_unicode_buffer(length + 1)
+                            user32.GetWindowTextW(hwnd, buff, length + 1)
+                            title = buff.value
+                            if folder_name.lower() in title.lower() or 'download' in title.lower() or 'instagrab' in title.lower():
+                                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                                user32.BringWindowToTop(hwnd)
+                                user32.SetForegroundWindow(hwnd)
+                                return False
+                return True
+
+            cb = WNDENUMPROC(enum_handler)
+            user32.EnumWindows(cb, 0)
+        except Exception:
+            pass
+
+        return True
 
     @app.route('/api/open-file', methods=['POST', 'OPTIONS'])
     def open_file():
@@ -324,7 +300,7 @@ def create_app(config, downloader, token_manager):
         
         try:
             # 1. If exact filepath exists, highlight file in Windows File Explorer
-            if filepath and os.path.exists(filepath):
+            if filepath and os.path.isfile(filepath):
                 reveal_in_explorer(filepath)
                 return jsonify({'status': 'ok', 'opened': 'file'})
 
@@ -334,14 +310,13 @@ def create_app(config, downloader, token_manager):
                     for name in [filename, title]:
                         if name:
                             candidate = os.path.join(sdir, name)
-                            if os.path.exists(candidate):
+                            if os.path.isfile(candidate):
                                 reveal_in_explorer(candidate)
                                 return jsonify({'status': 'ok', 'opened': 'file'})
 
             # 3. Fuzzy search: match normalized title in both download directories
             search_term = filename or title or (os.path.basename(filepath) if filepath else '')
             if search_term:
-                import re
                 clean_search = re.sub(r'[\W_]+', '', search_term.lower()[:20])
                 if clean_search:
                     for sdir in search_dirs:
@@ -350,8 +325,9 @@ def create_app(config, downloader, token_manager):
                                 clean_candidate = re.sub(r'[\W_]+', '', f.lower()[:20])
                                 if clean_candidate and (clean_search in clean_candidate or clean_candidate in clean_search):
                                     match_file = os.path.join(sdir, f)
-                                    reveal_in_explorer(match_file)
-                                    return jsonify({'status': 'ok', 'opened': 'file', 'matched': f})
+                                    if os.path.isfile(match_file):
+                                        reveal_in_explorer(match_file)
+                                        return jsonify({'status': 'ok', 'opened': 'file', 'matched': f})
 
             # 4. Fallback: ensure download directory exists and open it directly in File Explorer
             os.makedirs(download_path, exist_ok=True)

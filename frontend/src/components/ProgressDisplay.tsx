@@ -13,8 +13,8 @@ interface Props {
 export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearCompleted, onRetry }: Props) {
   if (!downloads || downloads.length === 0) return null;
 
-  const handleOpenFile = async (filepath?: string) => {
-    await helperApi.openFile(filepath);
+  const handleOpenFile = async (filepath?: string, filename?: string) => {
+    await helperApi.openFile(filepath, filename);
   };
 
   const formatSpeed = (speed?: string) => {
@@ -168,9 +168,9 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
                   </p>
                 </div>
 
-                {isComplete && item.filepath && (
+                {isComplete && (item.filepath || item.filename) && (
                   <button
-                    onClick={() => handleOpenFile(item.filepath)}
+                    onClick={() => handleOpenFile(item.filepath, item.filename)}
                     className="inline-flex items-center gap-1 text-xs font-bold text-insta-pink hover:underline flex-shrink-0 cursor-pointer"
                     title="Open in File Explorer"
                   >

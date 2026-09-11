@@ -62,8 +62,29 @@ function triggerBrowserDownload(fileUrl, filename) {
   });
 }
 
+function normalizeMediaUrl(rawUrl) {
+  if (!rawUrl) return rawUrl;
+  try {
+    let uStr = rawUrl.trim();
+    if (!uStr.startsWith('http://') && !uStr.startsWith('https://')) {
+      uStr = 'https://' + uStr;
+    }
+    const u = new URL(uStr);
+    if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
+      const match = u.pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+      if (match) {
+        const type = u.pathname.includes('reel') ? 'reel' : (u.pathname.includes('tv') ? 'tv' : 'p');
+        return `https://www.instagram.com/${type}/${match[1]}/`;
+      }
+    }
+  } catch {}
+  return rawUrl;
+}
+
 // Trigger download via Desktop Engine, broadcast live progress to tab, then pipe to Browser Download Manager
 async function downloadMedia(url, formatType, quality, tabId = null) {
+  url = normalizeMediaUrl(url);
+
   // Respect saved extension preferences if not explicitly set
   if (!formatType || !quality) {
     const prefs = await new Promise(r => chrome.storage.local.get(['pref_format', 'pref_quality'], r));

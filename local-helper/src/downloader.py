@@ -3,6 +3,7 @@ import threading
 import os
 import sys
 import time
+import re
 from .security import validate_media_url
 
 def get_ffmpeg_dir():
@@ -56,6 +57,13 @@ class Downloader:
         if not is_valid:
             self.progress_store.update(download_id, state='error', error=err_msg, errorType='unknown')
             return
+
+        if platform == 'instagram':
+            match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+            if match:
+                shortcode = match.group(1)
+                content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
+                url = f"https://www.instagram.com/{content_type}/{shortcode}/"
 
         with self.active_downloads_lock:
             self.active_downloads[download_id] = {'cancel': False}
