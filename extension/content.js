@@ -229,13 +229,14 @@
   function scanPinterest() {
     const pinMatch = window.location.pathname.match(/\/pin\/(\d+)/i);
 
-    // 1. Opened Pin Closeup (Top Action Bar, Video Player Overlay & Details)
+    // 1. Opened Pin Closeup (Top Action Bar next to Save)
     if (pinMatch || document.querySelector('div[role="dialog"]') || window.location.pathname.includes('/pin/')) {
       const pinId = pinMatch ? pinMatch[1] : '';
       const pinUrl = pinId ? `https://www.pinterest.com/pin/${pinId}/` : window.location.href;
 
-      // 1A. Top Action Row (Next to Red Save Button)
-      if (!document.getElementById('instagrab-pin-top-btn')) {
+      // 1A. Top Action Row (Single native button next to Red Save Button)
+      let hasTopBtn = !!document.getElementById('instagrab-pin-top-btn');
+      if (!hasTopBtn) {
         const allButtons = Array.from(document.querySelectorAll('button, div[role="button"]'));
         const saveBtn = allButtons.find(b => {
           const txt = (b.textContent || '').trim();
@@ -258,59 +259,43 @@
           });
 
           saveBtn.parentNode.insertBefore(topBtn, saveBtn);
+          hasTopBtn = true;
         }
       }
 
-      // 1B. Floating Download Button directly on Main <video> element
-      const mainVideos = document.querySelectorAll('video');
-      mainVideos.forEach((vid) => {
-        const vContainer = vid.closest('[data-test-id="closeup-stage"], [data-test-id="visual-content-container"], div:has(> video)') || vid.parentElement;
-        if (vContainer && !vContainer.querySelector('.instagrab-video-dl-btn')) {
-          const cStyle = window.getComputedStyle(vContainer);
-          if (cStyle.position === 'static') vContainer.style.position = 'relative';
+      // If top action button exists, remove any description-area duplicate to guarantee strictly ONE button
+      if (hasTopBtn) {
+        const oldWrap = document.querySelector('.instagrab-opened-wrap');
+        if (oldWrap) oldWrap.remove();
+      } else {
+        // Fallback only if Save button wasn't found
+        const existingWrap = document.querySelector('.instagrab-opened-wrap');
+        if (!existingWrap || existingWrap.dataset.pinUrl !== pinUrl) {
+          if (existingWrap) existingWrap.remove();
 
-          const vidBtn = document.createElement('button');
-          vidBtn.type = 'button';
-          vidBtn.className = 'instagrab-video-dl-btn';
-          vidBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download Video</span>`;
-          vidBtn.title = 'Download this video with InstaGrab';
-          vidBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            downloadMedia(pinUrl, vidBtn, 'Download Video');
-          });
+          const titleEl = document.querySelector('[data-test-id="pin-title"], h1[data-test-id="pin-title"], [data-test-id="closeup-title"], h1');
+          const descEl = document.querySelector('[data-test-id="truncated-description"], [data-test-id="closeup-description"], [data-test-id="pin-description"], [data-test-id="user-story-description"]');
+          const targetEl = titleEl || descEl;
 
-          vContainer.appendChild(vidBtn);
-        }
-      });
+          if (targetEl && targetEl.parentNode) {
+            const wrap = document.createElement('div');
+            wrap.className = 'instagrab-opened-wrap';
+            wrap.dataset.pinUrl = pinUrl;
 
-      // 1C. Details / Description Section
-      const existingWrap = document.querySelector('.instagrab-opened-wrap');
-      if (!existingWrap || existingWrap.dataset.pinUrl !== pinUrl) {
-        if (existingWrap) existingWrap.remove();
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'instagrab-opened-btn';
+            btn.innerHTML = `${DOWNLOAD_ICON} <span>Download</span>`;
+            btn.title = 'Download video/image to browser with InstaGrab';
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              downloadMedia(pinUrl, btn, 'Download');
+            });
 
-        const titleEl = document.querySelector('[data-test-id="pin-title"], h1[data-test-id="pin-title"], [data-test-id="closeup-title"], h1');
-        const descEl = document.querySelector('[data-test-id="truncated-description"], [data-test-id="closeup-description"], [data-test-id="pin-description"], [data-test-id="user-story-description"]');
-        const targetEl = titleEl || descEl;
-
-        if (targetEl && targetEl.parentNode) {
-          const wrap = document.createElement('div');
-          wrap.className = 'instagrab-opened-wrap';
-          wrap.dataset.pinUrl = pinUrl;
-
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'instagrab-opened-btn';
-          btn.innerHTML = `${DOWNLOAD_ICON} <span>Download with InstaGrab</span>`;
-          btn.title = 'Download video/image to browser with InstaGrab';
-          btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            downloadMedia(pinUrl, btn, 'Download with InstaGrab');
-          });
-
-          wrap.appendChild(btn);
-          targetEl.parentNode.insertBefore(wrap, targetEl.nextSibling);
+            wrap.appendChild(btn);
+            targetEl.parentNode.insertBefore(wrap, targetEl.nextSibling);
+          }
         }
       }
     }
@@ -379,15 +364,16 @@
 
     // 2. YouTube Shorts Vertical Action Bar
     if (isShorts) {
-      // Find like button across active Short renderer and overlays
-      const likeButtons = document.querySelectorAll(
-        'ytd-reel-video-renderer[is-active] ytd-like-button-renderer, ytd-reel-video-renderer[is-active] #like-button, ytd-reel-player-overlay-renderer ytd-like-button-renderer, ytd-reel-player-overlay-renderer #like-button, ytd-like-button-renderer, #like-button'
-      );
+      const activeReel = document.querySelector('ytd-reel-video-renderer[is-active]') || document.querySelector('ytd-reel-video-renderer');
+      const actionColumns = activeReel 
+        ? activeReel.querySelectorAll('#actions-inner, #actions')
+        : document.querySelectorAll('ytd-reel-video-renderer[is-active] #actions, ytd-reel-video-renderer[is-active] #actions-inner, #actions-inner, #actions');
 
-      likeButtons.forEach((likeEl) => {
-        const actionColumn = likeEl.closest('#actions, #actions-inner, ytd-reel-player-overlay-renderer') || likeEl.parentElement;
-        if (!actionColumn) return;
+      actionColumns.forEach((actionColumn) => {
         if (actionColumn.querySelector('.instagrab-yt-short-wrap')) return;
+
+        const likeEl = actionColumn.querySelector('ytd-like-button-renderer, #like-button') || actionColumn.firstElementChild;
+        if (!likeEl) return;
 
         const wrap = document.createElement('div');
         wrap.className = 'instagrab-yt-short-wrap';
@@ -411,7 +397,6 @@
         wrap.appendChild(btn);
         wrap.appendChild(label);
 
-        // Insert right above the like button
         if (likeEl.parentElement === actionColumn) {
           actionColumn.insertBefore(wrap, likeEl);
         } else {

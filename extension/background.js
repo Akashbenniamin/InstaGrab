@@ -71,6 +71,13 @@ async function downloadMedia(url, formatType, quality, tabId = null) {
     quality = quality || prefs.pref_quality || 'best';
   }
 
+  if (!tabId && chrome.tabs && chrome.tabs.query) {
+    try {
+      const activeTabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+      if (activeTabs && activeTabs[0]) tabId = activeTabs[0].id;
+    } catch {}
+  }
+
   let token = await getAuthToken();
   if (!token) {
     return { 

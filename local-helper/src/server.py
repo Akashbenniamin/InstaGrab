@@ -217,15 +217,16 @@ def create_app(config, downloader, token_manager):
         target_path = os.path.normpath(target_path)
         try:
             if os.path.isfile(target_path):
-                os.system(f'explorer /select,"{target_path}"')
+                subprocess.Popen(['explorer.exe', f'/select,{target_path}'], creationflags=0x08000000)
             elif os.path.isdir(target_path):
-                os.system(f'explorer "{target_path}"')
+                os.startfile(target_path)
             else:
                 download_path = os.path.normpath(config.get_download_path())
-                os.system(f'explorer "{download_path}"')
+                os.startfile(download_path)
         except Exception:
             try:
-                subprocess.Popen(['explorer.exe', f'/select,{target_path}'])
+                folder = os.path.dirname(target_path) if os.path.isfile(target_path) else target_path
+                os.startfile(folder)
             except Exception:
                 pass
 
@@ -237,7 +238,10 @@ def create_app(config, downloader, token_manager):
         filepath = data.get('filepath')
         filename = data.get('filename')
         title = data.get('title')
-        download_path = config.get_download_path()
+        download_path = os.path.normpath(config.get_download_path())
+        user_downloads = os.path.normpath(os.path.expanduser('~/Downloads'))
+        
+        search_dirs = [download_path, user_downloads]
         
         try:
             # 1. If exact filepath exists, highlight file in Windows File Explorer
@@ -245,26 +249,30 @@ def create_app(config, downloader, token_manager):
                 reveal_in_explorer(filepath)
                 return jsonify({'status': 'ok', 'opened': 'file'})
 
-            # 2. If filename or title provided, check if it exists in the download directory
-            for name in [filename, title]:
-                if name:
-                    candidate = os.path.join(download_path, name)
-                    if os.path.exists(candidate):
-                        reveal_in_explorer(candidate)
-                        return jsonify({'status': 'ok', 'opened': 'file'})
+            # 2. Check filename or title in InstaGrab folder or user Downloads folder
+            for sdir in search_dirs:
+                if os.path.isdir(sdir):
+                    for name in [filename, title]:
+                        if name:
+                            candidate = os.path.join(sdir, name)
+                            if os.path.exists(candidate):
+                                reveal_in_explorer(candidate)
+                                return jsonify({'status': 'ok', 'opened': 'file'})
 
-            # 3. Fuzzy search: match normalized title in download directory
+            # 3. Fuzzy search: match normalized title in both download directories
             search_term = filename or title or (os.path.basename(filepath) if filepath else '')
-            if search_term and os.path.isdir(download_path):
+            if search_term:
                 import re
-                clean_search = re.sub(r'[\W_]+', '', search_term.lower()[:30])
+                clean_search = re.sub(r'[\W_]+', '', search_term.lower()[:20])
                 if clean_search:
-                    for f in os.listdir(download_path):
-                        clean_candidate = re.sub(r'[\W_]+', '', f.lower()[:30])
-                        if clean_candidate and (clean_search in clean_candidate or clean_candidate in clean_search):
-                            match_file = os.path.join(download_path, f)
-                            reveal_in_explorer(match_file)
-                            return jsonify({'status': 'ok', 'opened': 'file', 'matched': f})
+                    for sdir in search_dirs:
+                        if os.path.isdir(sdir):
+                            for f in os.listdir(sdir):
+                                clean_candidate = re.sub(r'[\W_]+', '', f.lower()[:20])
+                                if clean_candidate and (clean_search in clean_candidate or clean_candidate in clean_search):
+                                    match_file = os.path.join(sdir, f)
+                                    reveal_in_explorer(match_file)
+                                    return jsonify({'status': 'ok', 'opened': 'file', 'matched': f})
 
             # 4. Fallback: ensure download directory exists and open it directly in File Explorer
             os.makedirs(download_path, exist_ok=True)
