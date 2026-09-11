@@ -99,16 +99,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Auto-populate from clipboard if available
+  // Auto-populate from active tab or clipboard
+  if (chrome.tabs && chrome.tabs.query) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const activeUrl = tabs && tabs[0] ? tabs[0].url : '';
+      if (activeUrl && (activeUrl.includes('instagram.com') || activeUrl.includes('youtu') || activeUrl.includes('pinterest.'))) {
+        if (!urlInput.value) {
+          urlInput.value = activeUrl;
+        }
+      }
+    });
+  }
+
   try {
     const text = await navigator.clipboard.readText();
-    if (text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.'))) {
+    if (!urlInput.value && text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.'))) {
       urlInput.value = text;
     }
   } catch {}
 
-  downloadBtn.addEventListener('click', () => {
-    const url = urlInput.value.trim();
+  downloadBtn.addEventListener('click', async () => {
+    let url = urlInput.value.trim();
+
+    // If url bar is empty, query active tab URL
+    if (!url && chrome.tabs && chrome.tabs.query) {
+      const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
+      const activeUrl = tabs && tabs[0] ? tabs[0].url : '';
+      if (activeUrl && (activeUrl.includes('instagram.com') || activeUrl.includes('youtu') || activeUrl.includes('pinterest.'))) {
+        url = activeUrl;
+        urlInput.value = url;
+      }
+    }
+
     if (!url) {
       showMessage('Please enter or paste a valid link', true);
       return;

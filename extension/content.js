@@ -45,7 +45,7 @@
       if (msgEl) msgEl.textContent = message || 'Download failed';
       if (fillEl) {
         fillEl.className = 'instagrab-toast-bar-fill error';
-        fillEl.style.width = '100%';
+        fillEl.style.setProperty('width', '100%', 'important');
       }
       toast.classList.add('show');
       clearTimeout(activeToastTimeout);
@@ -62,7 +62,7 @@
       if (msgEl) msgEl.textContent = message || '✓ Download complete! Saving to browser...';
       if (fillEl) {
         fillEl.className = 'instagrab-toast-bar-fill complete';
-        fillEl.style.width = '100%';
+        fillEl.style.setProperty('width', '100%', 'important');
       }
       toast.classList.add('show');
       clearTimeout(activeToastTimeout);
@@ -71,7 +71,7 @@
     }
 
     // Downloading or Processing state
-    const pct = Math.max(2, Math.min(100, Math.round(progress)));
+    const pct = Math.max(3, Math.min(100, Math.round(progress)));
     if (iconEl) {
       iconEl.className = 'instagrab-toast-icon';
       iconEl.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
@@ -90,7 +90,7 @@
     }
     if (fillEl) {
       fillEl.className = 'instagrab-toast-bar-fill';
-      fillEl.style.width = `${pct}%`;
+      fillEl.style.setProperty('width', `${pct}%`, 'important');
     }
 
     toast.classList.add('show');
@@ -229,33 +229,62 @@
   function scanPinterest() {
     const pinMatch = window.location.pathname.match(/\/pin\/(\d+)/i);
 
-    // 1. Opened Pin Closeup (Top Action Bar & Details)
-    if (pinMatch || document.querySelector('div[role="dialog"]')) {
+    // 1. Opened Pin Closeup (Top Action Bar, Video Player Overlay & Details)
+    if (pinMatch || document.querySelector('div[role="dialog"]') || window.location.pathname.includes('/pin/')) {
       const pinId = pinMatch ? pinMatch[1] : '';
       const pinUrl = pinId ? `https://www.pinterest.com/pin/${pinId}/` : window.location.href;
 
       // 1A. Top Action Row (Next to Red Save Button)
-      const saveBtn = document.querySelector(
-        'button[data-test-id="PinBetterSaveCanvas"], div[data-test-id="PinBetterSaveCanvas"], button[data-test-id="official-board-pin-save-button"], [data-test-id="closeup-action-bar"] button'
-      );
+      if (!document.getElementById('instagrab-pin-top-btn')) {
+        const allButtons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+        const saveBtn = allButtons.find(b => {
+          const txt = (b.textContent || '').trim();
+          return (txt === 'Save' || txt === 'सहेजें' || txt === 'Enregistrer' || txt === 'Guardar') && b.offsetWidth > 20;
+        }) || document.querySelector(
+          'button[data-test-id="PinBetterSaveCanvas"], div[data-test-id="PinBetterSaveCanvas"], button[data-test-id="official-board-pin-save-button"], [data-test-id="closeup-action-bar"] button'
+        );
 
-      if (saveBtn && saveBtn.parentNode && !document.getElementById('instagrab-pin-top-btn')) {
-        const topBtn = document.createElement('button');
-        topBtn.id = 'instagrab-pin-top-btn';
-        topBtn.type = 'button';
-        topBtn.className = 'instagrab-opened-top-btn';
-        topBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download</span>`;
-        topBtn.title = 'Download video/image to browser with InstaGrab';
-        topBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          downloadMedia(pinUrl, topBtn, 'Download');
-        });
+        if (saveBtn && saveBtn.parentNode) {
+          const topBtn = document.createElement('button');
+          topBtn.id = 'instagrab-pin-top-btn';
+          topBtn.type = 'button';
+          topBtn.className = 'instagrab-opened-top-btn';
+          topBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download</span>`;
+          topBtn.title = 'Download video/image to browser with InstaGrab';
+          topBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            downloadMedia(pinUrl, topBtn, 'Download');
+          });
 
-        saveBtn.parentNode.insertBefore(topBtn, saveBtn);
+          saveBtn.parentNode.insertBefore(topBtn, saveBtn);
+        }
       }
 
-      // 1B. Details / Description Section
+      // 1B. Floating Download Button directly on Main <video> element
+      const mainVideos = document.querySelectorAll('video');
+      mainVideos.forEach((vid) => {
+        const vContainer = vid.closest('[data-test-id="closeup-stage"], [data-test-id="visual-content-container"], div:has(> video)') || vid.parentElement;
+        if (vContainer && !vContainer.querySelector('.instagrab-video-dl-btn')) {
+          const cStyle = window.getComputedStyle(vContainer);
+          if (cStyle.position === 'static') vContainer.style.position = 'relative';
+
+          const vidBtn = document.createElement('button');
+          vidBtn.type = 'button';
+          vidBtn.className = 'instagrab-video-dl-btn';
+          vidBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download Video</span>`;
+          vidBtn.title = 'Download this video with InstaGrab';
+          vidBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            downloadMedia(pinUrl, vidBtn, 'Download Video');
+          });
+
+          vContainer.appendChild(vidBtn);
+        }
+      });
+
+      // 1C. Details / Description Section
       const existingWrap = document.querySelector('.instagrab-opened-wrap');
       if (!existingWrap || existingWrap.dataset.pinUrl !== pinUrl) {
         if (existingWrap) existingWrap.remove();
@@ -350,19 +379,15 @@
 
     // 2. YouTube Shorts Vertical Action Bar
     if (isShorts) {
-      // Find active Shorts renderer or visible reels action columns
-      const actionColumns = document.querySelectorAll(
-        'ytd-reel-video-renderer[is-active] #actions, ytd-reel-video-renderer[is-active] ytd-reel-player-overlay-renderer #actions, ytd-reel-player-overlay-renderer #actions, ytd-reel-video-renderer #actions'
+      // Find like button across active Short renderer and overlays
+      const likeButtons = document.querySelectorAll(
+        'ytd-reel-video-renderer[is-active] ytd-like-button-renderer, ytd-reel-video-renderer[is-active] #like-button, ytd-reel-player-overlay-renderer ytd-like-button-renderer, ytd-reel-player-overlay-renderer #like-button, ytd-like-button-renderer, #like-button'
       );
 
-      actionColumns.forEach((bar) => {
-        if (bar.dataset.instagrabInjected || bar.querySelector('.instagrab-yt-short-wrap')) return;
-
-        // Ensure we're in the visible/active reel if multiple exist
-        const renderer = bar.closest('ytd-reel-video-renderer');
-        if (renderer && !renderer.hasAttribute('is-active') && actionColumns.length > 1) return;
-
-        bar.dataset.instagrabInjected = 'true';
+      likeButtons.forEach((likeEl) => {
+        const actionColumn = likeEl.closest('#actions, #actions-inner, ytd-reel-player-overlay-renderer') || likeEl.parentElement;
+        if (!actionColumn) return;
+        if (actionColumn.querySelector('.instagrab-yt-short-wrap')) return;
 
         const wrap = document.createElement('div');
         wrap.className = 'instagrab-yt-short-wrap';
@@ -386,8 +411,12 @@
         wrap.appendChild(btn);
         wrap.appendChild(label);
 
-        // Insert at the top of the action buttons column
-        bar.insertBefore(wrap, bar.firstChild);
+        // Insert right above the like button
+        if (likeEl.parentElement === actionColumn) {
+          actionColumn.insertBefore(wrap, likeEl);
+        } else {
+          actionColumn.insertBefore(wrap, actionColumn.firstChild);
+        }
       });
     }
   }
@@ -492,18 +521,18 @@
   };
 
   const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) {
-        requestScan();
-        break;
-      }
-    }
+    requestScan();
   });
 
   observer.observe(document.body, {
     childList: true,
-    subtree: true
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['is-active', 'class']
   });
+
+  // Dynamic SPA heartbeat scan (every 1000ms) for Shorts and Pinterest modal changes
+  setInterval(requestScan, 1000);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', scanAll);

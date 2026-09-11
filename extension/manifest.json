@@ -5,7 +5,8 @@
   "description": "Download Instagram, YouTube, and Pinterest media directly to your browser via InstaGrab.",
   "permissions": [
     "storage",
-    "downloads"
+    "downloads",
+    "activeTab"
   ],
   "host_permissions": [
     "*://*.pinterest.com/*",

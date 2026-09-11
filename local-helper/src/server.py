@@ -92,11 +92,11 @@ def create_app(config, downloader, token_manager):
 
         origin = request.headers.get('Origin')
         if origin:
-            if request.path != '/api/health':
+            if request.path != '/api/health' and request.path != '/api/open-file':
                 if not is_origin_allowed(origin):
                     return jsonify({'error': 'Origin not allowed'}), 403
 
-        if request.path != '/api/health':
+        if request.path != '/api/health' and request.path != '/api/open-file':
             if request.headers.get('X-Requested-With') != 'InstaGrab':
                 return jsonify({'error': 'Missing custom header'}), 403
 
@@ -112,7 +112,7 @@ def create_app(config, downloader, token_manager):
     @app.after_request
     def cors_middleware(response):
         origin = request.headers.get('Origin')
-        if is_origin_allowed(origin) or (request.path == '/api/health' and origin):
+        if is_origin_allowed(origin) or (request.path in ('/api/health', '/api/open-file') and origin):
             response.headers['Access-Control-Allow-Origin'] = origin
         
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
@@ -214,51 +214,20 @@ def create_app(config, downloader, token_manager):
             return jsonify(config.settings)
 
     def reveal_in_explorer(target_path):
-        import ctypes
-        from ctypes import wintypes
-        import time
-
         target_path = os.path.normpath(target_path)
-        user32 = ctypes.windll.user32
-
-        # Allow newly launched or existing explorer window to take foreground
         try:
-            user32.AllowSetForegroundWindow(-1)
+            if os.path.isfile(target_path):
+                os.system(f'explorer /select,"{target_path}"')
+            elif os.path.isdir(target_path):
+                os.system(f'explorer "{target_path}"')
+            else:
+                download_path = os.path.normpath(config.get_download_path())
+                os.system(f'explorer "{download_path}"')
         except Exception:
-            pass
-
-        if os.path.isfile(target_path):
-            subprocess.Popen(['explorer.exe', f'/select,{target_path}'])
-        else:
             try:
-                os.startfile(target_path)
+                subprocess.Popen(['explorer.exe', f'/select,{target_path}'])
             except Exception:
-                subprocess.Popen(['explorer.exe', target_path])
-
-        # Bring the Explorer window to front
-        time.sleep(0.3)
-        def enum_handler(hwnd, extra):
-            if user32.IsWindowVisible(hwnd):
-                length = user32.GetWindowTextLengthW(hwnd)
-                if length > 0:
-                    class_buff = ctypes.create_unicode_buffer(256)
-                    user32.GetClassNameW(hwnd, class_buff, 256)
-                    if class_buff.value in ('CabinetWClass', 'ExploreWClass'):
-                        buff = ctypes.create_unicode_buffer(length + 1)
-                        user32.GetWindowTextW(hwnd, buff, length + 1)
-                        title = buff.value
-                        folder_name = os.path.basename(os.path.dirname(target_path) if os.path.isfile(target_path) else target_path)
-                        if not folder_name or folder_name.lower() in title.lower():
-                            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                            user32.SetForegroundWindow(hwnd)
-                            return False
-            return True
-
-        try:
-            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-            user32.EnumWindows(WNDENUMPROC(enum_handler), 0)
-        except Exception:
-            pass
+                pass
 
     @app.route('/api/open-file', methods=['POST', 'OPTIONS'])
     def open_file():
