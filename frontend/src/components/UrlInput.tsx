@@ -1,4 +1,4 @@
-import { ClipboardPaste, X, Play, Camera } from 'lucide-react';
+import { ClipboardPaste, X, Play, Camera, Pin } from 'lucide-react';
 import { useRef } from 'react';
 import { validateMediaUrl } from '../services/urlValidator';
 
@@ -50,7 +50,7 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error }: Props) 
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder="Paste Instagram or YouTube link (Reels, Shorts, Videos)..."
+          placeholder="Paste Instagram, YouTube, or Pinterest link..."
           className={`w-full py-4 pl-12 pr-28 text-base sm:text-lg rounded-2xl bg-[var(--bg-main)] border ${error ? 'border-red-500' : 'border-[var(--border-color)]'} focus:outline-none focus:ring-2 focus:ring-insta-pink transition-all shadow-sm`}
         />
         
@@ -63,10 +63,15 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error }: Props) 
                   <Camera className="w-3.5 h-3.5 text-pink-500" />
                   <span className="capitalize">{detection.contentType || 'IG'}</span>
                 </>
-              ) : (
+              ) : detection.platform === 'youtube' ? (
                 <>
                   <Play className="w-3.5 h-3.5 text-red-500 fill-red-500" />
                   <span>{detection.contentType === 'shorts' ? 'Shorts' : 'YouTube'}</span>
+                </>
+              ) : (
+                <>
+                  <Pin className="w-3.5 h-3.5 text-red-600 fill-red-600" />
+                  <span>Pinterest</span>
                 </>
               )}
             </div>

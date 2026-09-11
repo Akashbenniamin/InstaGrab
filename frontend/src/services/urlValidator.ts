@@ -114,9 +114,39 @@ export function validateMediaUrl(url: string): ValidationResult {
     return { valid: false, error: "Please provide a link to a YouTube video or Short", platform: 'youtube' };
   }
 
+  // 3. Pinterest (pins, videos, images, pin.it)
+  if (hostname.includes('pin.it')) {
+    const pinSlug = pathname.replace(/^\/+/, '').split('/')[0];
+    if (pinSlug) {
+      return {
+        valid: true,
+        normalized: `https://pin.it/${pinSlug}`,
+        shortcode: pinSlug,
+        platform: 'pinterest',
+        contentType: 'video'
+      };
+    }
+    return { valid: false, error: 'Invalid Pinterest short link', platform: 'pinterest' };
+  }
+
+  if (hostname.includes('pinterest.')) {
+    const pinMatch = pathname.match(/\/pin\/([A-Za-z0-9_-]+)/);
+    if (pinMatch && pinMatch[1]) {
+      const pinId = pinMatch[1];
+      return {
+        valid: true,
+        normalized: `https://www.pinterest.com/pin/${pinId}/`,
+        shortcode: pinId,
+        platform: 'pinterest',
+        contentType: 'video'
+      };
+    }
+    return { valid: false, error: 'Please provide a link to a Pinterest Pin', platform: 'pinterest' };
+  }
+
   return { 
     valid: false, 
-    error: 'Please enter a URL from Instagram or YouTube', 
+    error: 'Please enter a URL from Instagram, YouTube, or Pinterest', 
     platform: 'unknown' 
   };
 }

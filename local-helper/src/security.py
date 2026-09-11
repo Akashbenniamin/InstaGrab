@@ -81,7 +81,20 @@ def validate_media_url(url: str) -> tuple[bool, str, str]:
 
         return False, "Invalid YouTube URL format.", "youtube"
 
-    return False, "Unsupported platform. Please enter an Instagram or YouTube URL.", "unknown"
+    # 3. Pinterest validation (Pins, Videos, Images, pin.it shortlinks)
+    if 'pin.it' in netloc:
+        pinit_pattern = r'^https?://pin\.it/[A-Za-z0-9_-]+/?$'
+        if re.match(pinit_pattern, clean_url):
+            return True, "", "pinterest"
+        return False, "Invalid Pinterest short link.", "pinterest"
+
+    if 'pinterest.' in netloc or 'pinterest.com' in netloc:
+        pin_pattern = r'^https?://([a-zA-Z0-9-]+\.)?pinterest\.[a-z.]+/pin/[A-Za-z0-9_-]+/?$'
+        if re.match(pin_pattern, clean_url):
+            return True, "", "pinterest"
+        return False, "Invalid Pinterest Pin URL. Please provide a link to a Pin.", "pinterest"
+
+    return False, "Unsupported platform. Please enter an Instagram, YouTube, or Pinterest URL.", "unknown"
 
 
 def validate_instagram_url(url: str) -> tuple[bool, str]:

@@ -30,6 +30,18 @@ def test_valid_youtube_urls():
         assert valid, f"Failed on valid YouTube URL: {url} - {msg}"
         assert platform == expected_platform
 
+def test_valid_pinterest_urls():
+    valid_urls = [
+        "https://www.pinterest.com/pin/123456789/",
+        "https://pinterest.com/pin/987654321/",
+        "https://in.pinterest.com/pin/1122334455/",
+        "https://pin.it/7x9AbCd"
+    ]
+    for url in valid_urls:
+        valid, msg, platform = validate_media_url(url)
+        assert valid, f"Failed on valid Pinterest URL: {url} - {msg}"
+        assert platform == "pinterest"
+
 def test_invalid_urls():
     invalid_urls = [
         "https://www.google.com",

@@ -16,7 +16,7 @@ export function Header({ theme, toggleTheme }: Props) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">InstaGrab</h1>
           <p className="text-xs text-[var(--text-secondary)] hidden sm:block">
-            Decentralized Instagram & YouTube Downloader (MP4 / MP3)
+            Instagram, YouTube & Pinterest Downloader • 1-Time Setup • Free Forever
           </p>
         </div>
       </div>
