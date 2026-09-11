@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>InstaGrab</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #f3f4f6;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo svg {
+      width: 18px;
+      height: 18px;
+      stroke: white;
+      fill: none;
+      stroke-width: 2.5;
+    }
+    .title h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .title p {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    .status-card {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #1a1e29;
+      border: 1px solid #282f42;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      font-size: 12px;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+    .dot.connected {
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+    .input-box {
+      margin-bottom: 12px;
+    }
+    .input-box input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #161922;
+      border: 1px solid #2d3548;
+      color: #ffffff;
+      font-size: 12px;
+      outline: none;
+    }
+    .input-box input:focus {
+      border-color: #E1306C;
+    }
+    .btn-grab {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%);
+      color: white;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+    }
+    .btn-grab:hover {
+      opacity: 0.92;
+    }
+    .btn-grab:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .notice {
+      margin-top: 12px;
+      font-size: 10.5px;
+      color: #6b7280;
+      text-align: center;
+      line-height: 1.4;
+    }
+    .links {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+    .links a {
+      font-size: 11px;
+      color: #E1306C;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .links a:hover {
+      text-decoration: underline;
+    }
+    #msg {
+      margin-top: 8px;
+      font-size: 11px;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    </div>
+    <div class="title">
+      <h1>InstaGrab</h1>
+      <p>1-Click Downloader</p>
+    </div>
+  </div>
+
+  <div class="status-card">
+    <span style="color: #9ca3af;">Desktop Engine:</span>
+    <div class="status-badge">
+      <div id="dot" class="dot"></div>
+      <span id="status-text" style="color: #ef4444;">Offline</span>
+    </div>
+  </div>
+
+  <div class="input-box">
+    <input type="text" id="url-input" placeholder="Paste link (Instagram, YT, Pinterest)..." />
+  </div>
+
+  <button id="download-btn" class="btn-grab">
+    <span>Download via Engine</span>
+  </button>
+
+  <div id="msg"></div>
+
+  <div class="notice">
+    ✨ In-page "Grab" buttons are enabled on Pinterest! Browse pins and click directly.
+  </div>
+
+  <div class="links">
+    <a href="https://akashbenniamin.github.io/InstaGrab/" target="_blank" id="open-web">Open Web App</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

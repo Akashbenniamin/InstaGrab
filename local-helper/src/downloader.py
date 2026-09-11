@@ -90,10 +90,30 @@ class Downloader:
                 self.progress_store.update(download_id, state='error', error='yt-dlp download error')
 
         base_path = self.config.get_download_path()
-        outtmpl = os.path.join(base_path, '%(title)s.%(ext)s')
+        job_temp_dir = os.path.join(base_path, '.tmp', download_id)
+        try:
+            os.makedirs(job_temp_dir, exist_ok=True)
+        except Exception:
+            pass
+
+        # Smart naming to prevent collisions when downloading multiple qualities/formats
+        if format_type == 'audio':
+            tmpl = '%(title)s [Audio].%(ext)s'
+        elif quality and quality != 'best':
+            tmpl = f'%(title)s [{quality}].%(ext)s'
+        else:
+            tmpl = '%(title)s%(height& [{}p]|)s.%(ext)s'
+
+        outtmpl = os.path.join(base_path, tmpl)
         
         ydl_opts = {
+            'paths': {
+                'home': base_path,
+                'temp': job_temp_dir
+            },
             'outtmpl': outtmpl,
+            'overwrites': True,
+            'windowsfilenames': True,
             'progress_hooks': [my_hook],
             'quiet': True,
             'no_warnings': True,
@@ -177,6 +197,12 @@ class Downloader:
                 
             self.progress_store.update(download_id, state='error', error=err_str, errorType=error_type)
         finally:
+            import shutil
+            try:
+                if os.path.exists(job_temp_dir):
+                    shutil.rmtree(job_temp_dir, ignore_errors=True)
+            except Exception:
+                pass
             with self.active_downloads_lock:
                 if download_id in self.active_downloads:
                     del self.active_downloads[download_id]

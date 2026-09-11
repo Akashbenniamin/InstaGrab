@@ -10,7 +10,9 @@ import {
   Save, 
   CheckCircle2, 
   Info,
-  Sliders
+  Sliders,
+  Puzzle,
+  Download
 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
 import { HelperStatus } from '../types';
@@ -97,7 +99,7 @@ export const SettingsModal: React.FC<Props> = ({
   const [downloadPath, setDownloadPath] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<'storage' | 'themes' | 'about'>('storage');
+  const [activeTab, setActiveTab] = useState<'storage' | 'themes' | 'extension' | 'about'>('storage');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -206,6 +208,17 @@ export const SettingsModal: React.FC<Props> = ({
           >
             <Palette className="w-4 h-4" />
             <span>Themes</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('extension')}
+            className={`py-3 flex items-center gap-1.5 border-b-2 cursor-pointer transition-colors ${
+              activeTab === 'extension'
+                ? 'border-insta-pink text-insta-pink'
+                : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Puzzle className="w-4 h-4" />
+            <span>Browser Extension</span>
           </button>
           <button
             onClick={() => setActiveTab('about')}
@@ -358,7 +371,79 @@ export const SettingsModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* TAB 3: FUTURE FEATURES & EXTENSIBILITY */}
+          {/* TAB 3: BROWSER EXTENSION */}
+          {activeTab === 'extension' && (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                    InstaGrab Browser Extension
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-insta-pink">
+                    Pinterest 1-Click
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Adds native 1-click &quot;Grab&quot; download buttons directly on Pinterest posts and pins.
+                </p>
+              </div>
+
+              {/* Download card */}
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="space-y-1 text-left w-full sm:w-auto">
+                  <div className="font-bold text-xs text-[var(--text-primary)]">
+                    InstaGrab Extension for Chrome, Edge & Brave
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    Manifest V3 • Lightweight • Works with your local Desktop Engine
+                  </p>
+                </div>
+
+                <a
+                  href="/instagrab-extension.zip"
+                  download="instagrab-extension.zip"
+                  className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl insta-gradient text-white text-xs font-bold hover:opacity-95 shadow-xs transition-opacity cursor-pointer text-center"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Extension (.zip)</span>
+                </a>
+              </div>
+
+              {/* Installation steps */}
+              <div className="space-y-3 pt-1">
+                <h4 className="text-xs font-bold text-[var(--text-primary)]">
+                  Manual Installation Guide (10 Seconds):
+                </h4>
+                
+                <div className="space-y-2.5 text-xs text-[var(--text-secondary)]">
+                  <div className="flex gap-2.5 items-start">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full insta-gradient text-white font-bold text-[10px] flex items-center justify-center">1</span>
+                    <p>Click the button above to download <code className="font-mono text-[10px] bg-black/5 dark:bg-white/10 px-1 py-0.5 rounded">instagrab-extension.zip</code> and extract it anywhere on your PC.</p>
+                  </div>
+
+                  <div className="flex gap-2.5 items-start">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full insta-gradient text-white font-bold text-[10px] flex items-center justify-center">2</span>
+                    <p>Open <code className="font-mono text-[10px] bg-black/5 dark:bg-white/10 px-1 py-0.5 rounded">chrome://extensions</code> (or <code className="font-mono text-[10px] bg-black/5 dark:bg-white/10 px-1 py-0.5 rounded">edge://extensions</code>) in your browser and toggle on <strong>Developer mode</strong> in the top right.</p>
+                  </div>
+
+                  <div className="flex gap-2.5 items-start">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full insta-gradient text-white font-bold text-[10px] flex items-center justify-center">3</span>
+                    <p>Click <strong>Load unpacked</strong> (top left) and select the extracted folder. That&apos;s it!</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Features summary */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  Now visit <a href="https://pinterest.com" target="_blank" rel="noreferrer" className="underline font-bold">Pinterest</a>. You will see floating <strong>Grab</strong> buttons on every pin. Clicking it sends the video or image straight to your InstaGrab downloads folder!
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: FUTURE FEATURES & EXTENSIBILITY */}
           {activeTab === 'about' && (
             <div className="space-y-4">
               <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50 space-y-2">

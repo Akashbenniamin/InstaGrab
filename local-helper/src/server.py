@@ -191,6 +191,52 @@ def create_app(config, downloader, token_manager):
                     config.set(k, data[k])
             return jsonify(config.settings)
 
+    def reveal_in_explorer(target_path):
+        import ctypes
+        from ctypes import wintypes
+        import time
+
+        target_path = os.path.normpath(target_path)
+        user32 = ctypes.windll.user32
+
+        # Allow newly launched or existing explorer window to take foreground
+        try:
+            user32.AllowSetForegroundWindow(-1)
+        except Exception:
+            pass
+
+        creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+
+        if os.path.isfile(target_path):
+            subprocess.Popen(['explorer.exe', f'/select,{target_path}'], creationflags=creationflags)
+        elif os.path.isdir(target_path):
+            subprocess.Popen(['explorer.exe', target_path], creationflags=creationflags)
+
+        # Bring the Explorer window to front
+        time.sleep(0.35)
+        def enum_handler(hwnd, extra):
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    class_buff = ctypes.create_unicode_buffer(256)
+                    user32.GetClassNameW(hwnd, class_buff, 256)
+                    if class_buff.value in ('CabinetWClass', 'ExploreWClass'):
+                        buff = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buff, length + 1)
+                        title = buff.value
+                        folder_name = os.path.basename(os.path.dirname(target_path) if os.path.isfile(target_path) else target_path)
+                        if folder_name and folder_name.lower() in title.lower():
+                            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                            user32.SetForegroundWindow(hwnd)
+                            return False
+            return True
+
+        try:
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            user32.EnumWindows(WNDENUMPROC(enum_handler), 0)
+        except Exception:
+            pass
+
     @app.route('/api/open-file', methods=['POST', 'OPTIONS'])
     def open_file():
         if request.method == 'OPTIONS':
@@ -203,19 +249,19 @@ def create_app(config, downloader, token_manager):
         try:
             # 1. If exact filepath exists, highlight file in Windows File Explorer
             if filepath and os.path.exists(filepath):
-                os.system(f'explorer /select,"{os.path.normpath(filepath)}"')
+                reveal_in_explorer(filepath)
                 return jsonify({'status': 'ok', 'opened': 'file'})
 
             # 2. If filename provided, check if it exists in the download directory
             if filename:
                 candidate = os.path.join(download_path, filename)
                 if os.path.exists(candidate):
-                    os.system(f'explorer /select,"{os.path.normpath(candidate)}"')
+                    reveal_in_explorer(candidate)
                     return jsonify({'status': 'ok', 'opened': 'file'})
 
             # 3. Fallback: open the download directory directly in File Explorer
             if os.path.exists(download_path):
-                os.startfile(download_path)
+                reveal_in_explorer(download_path)
                 return jsonify({'status': 'ok', 'opened': 'folder'})
 
             return jsonify({'error': 'Path not found'}), 404

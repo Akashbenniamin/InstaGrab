@@ -8,9 +8,10 @@ interface Props {
   onSubmit: () => void;
   disabled: boolean;
   error?: string;
+  onPasteText?: (text: string) => void;
 }
 
-export function UrlInput({ value, onChange, onSubmit, disabled, error }: Props) {
+export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteText }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -23,8 +24,16 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error }: Props) 
     try {
       const text = await navigator.clipboard.readText();
       onChange(text);
+      if (onPasteText && text) onPasteText(text);
     } catch (err) {
       console.error('Failed to read clipboard contents: ', err);
+    }
+  };
+
+  const handleNativePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (text && onPasteText) {
+      onPasteText(text);
     }
   };
 
@@ -49,6 +58,7 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error }: Props) 
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handleNativePaste}
           disabled={disabled}
           placeholder="Paste Instagram, YouTube, or Pinterest link..."
           className={`w-full py-4 pl-12 pr-28 text-base sm:text-lg rounded-2xl bg-[var(--bg-main)] border ${error ? 'border-red-500' : 'border-[var(--border-color)]'} focus:outline-none focus:ring-2 focus:ring-insta-pink transition-all shadow-sm`}

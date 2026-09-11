@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="instaGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FCAF45" />
+      <stop offset="40%" stop-color="#F56040" />
+      <stop offset="70%" stop-color="#E1306C" />
+      <stop offset="100%" stop-color="#833AB4" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+  <!-- Background rounded squircle -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#instaGrad)" filter="url(#shadow)" />
+  <!-- Inner download arrow and tray -->
+  <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="32" y1="16" x2="32" y2="36" />
+    <polyline points="23,28 32,37 41,28" />
+    <line x1="20" y1="46" x2="44" y2="46" />
+  </g>
+</svg>

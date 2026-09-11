@@ -18,6 +18,8 @@ import { PrivacyNotice } from './components/PrivacyNotice';
 import { MobileNotice } from './components/MobileNotice';
 import { SettingsModal } from './components/SettingsModal';
 
+import { Zap } from 'lucide-react';
+
 function App() {
   const { theme, setTheme, toggleTheme } = useTheme();
   const { status, pair } = useHelperConnection();
@@ -37,18 +39,28 @@ function App() {
   const [audioQuality, setAudioQuality] = useState<AudioQuality>('best');
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [quickMode, setQuickMode] = useState(() => localStorage.getItem('insta_dl_quick_mode') === 'true');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   useEffect(() => {
     setHistory(getHistory());
   }, [downloads]); // Refresh history whenever downloads update
 
+  const toggleQuickMode = () => {
+    setQuickMode(prev => {
+      const next = !prev;
+      localStorage.setItem('insta_dl_quick_mode', String(next));
+      return next;
+    });
+  };
+
   const handleUrlChange = (value: string) => {
     setUrl(value);
     setUrlError('');
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (overrideUrl?: string) => {
+    const inputUrl = (overrideUrl || url).trim();
     if (!status.connected) {
       setIsSetupOpen(true);
       return;
@@ -63,7 +75,7 @@ function App() {
       }
     }
 
-    const { valid, error, normalized } = validateMediaUrl(url);
+    const { valid, error, normalized } = validateMediaUrl(inputUrl);
     if (!valid) {
       setUrlError(error || 'Please enter a valid Instagram, YouTube, or Pinterest URL');
       return;
@@ -73,6 +85,17 @@ function App() {
     const quality = formatType === 'video' ? videoQuality : audioQuality;
 
     await startDownload(targetUrl, formatType, quality);
+  };
+
+  const handlePasteText = (pastedText: string) => {
+    if (!quickMode) return;
+    const { valid } = validateMediaUrl(pastedText);
+    if (valid) {
+      // Immediate download upon pasting when quick mode is active
+      setTimeout(() => {
+        handleDownload(pastedText);
+      }, 50);
+    }
   };
 
   const handleClearHistory = () => {
@@ -107,7 +130,8 @@ function App() {
                 <UrlInput 
                   value={url}
                   onChange={handleUrlChange}
-                  onSubmit={handleDownload}
+                  onSubmit={() => handleDownload()}
+                  onPasteText={handlePasteText}
                   disabled={isSubmitting}
                   error={urlError}
                 />
@@ -122,12 +146,37 @@ function App() {
                   disabled={isSubmitting}
                 />
                 
-                <DownloadButton 
-                  onClick={handleDownload}
-                  disabled={!url || !!urlError}
-                  loading={isSubmitting}
-                  formatType={formatType}
-                />
+                <div className="space-y-2">
+                  <DownloadButton 
+                    onClick={() => handleDownload()}
+                    disabled={!url || !!urlError}
+                    loading={isSubmitting}
+                    formatType={formatType}
+                  />
+
+                  {/* Quick Mode Toggle */}
+                  <div className="flex items-center justify-between px-1">
+                    <button
+                      type="button"
+                      onClick={toggleQuickMode}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer border ${
+                        quickMode
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 shadow-xs'
+                          : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                      title="When active, pasting a link automatically starts the download immediately"
+                    >
+                      <Zap className={`w-3.5 h-3.5 ${quickMode ? 'fill-amber-500 text-amber-500' : 'text-gray-400'}`} />
+                      <span>Quick Mode: {quickMode ? 'ON' : 'OFF'}</span>
+                    </button>
+
+                    {quickMode && (
+                      <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1 animate-in fade-in">
+                        ⚡ Auto-downloads on paste
+                      </span>
+                    )}
+                  </div>
+                </div>
 
                 <HelperStatusComponent 
                   status={status}
