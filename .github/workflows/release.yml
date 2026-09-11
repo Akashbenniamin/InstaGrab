@@ -1,0 +1,58 @@
+name: Build and Publish Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r local-helper/requirements.txt pyinstaller
+
+      - name: Generate application icon
+        working-directory: local-helper
+        run: python generate_icon.py
+
+      - name: Build with PyInstaller
+        working-directory: local-helper
+        run: python build.py
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress
+
+      - name: Compile Inno Setup Installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" local-helper/installer/setup.iss
+
+      - name: Create Portable Zip
+        run: |
+          Compress-Archive -Path "local-helper/dist/InstaGrab Helper/*" -DestinationPath "local-helper/dist/InstaGrab-Portable-Windows.zip" -Force
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.0' }}
+          name: InstaGrab Helper ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.0' }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            local-helper/dist/InstaGrab-Helper-Setup-*.exe
+            local-helper/dist/InstaGrab-Portable-Windows.zip
