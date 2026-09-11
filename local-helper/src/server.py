@@ -101,7 +101,7 @@ def create_app(config, downloader, token_manager):
                 return jsonify({'error': 'Missing custom header'}), 403
 
         # Token auth
-        if not request.path.startswith('/api/health') and not request.path.startswith('/api/pair/'):
+        if not request.path.startswith('/api/health') and not request.path.startswith('/api/pair/') and not request.path.startswith('/api/open-file'):
             auth_header = request.headers.get('Authorization', '')
             if not auth_header.startswith('Bearer '):
                 return jsonify({'error': 'Missing token'}), 401
@@ -127,7 +127,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.0.7',
+            'version': '1.0.8',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0
@@ -227,15 +227,16 @@ def create_app(config, downloader, token_manager):
         except Exception:
             pass
 
-        creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
-
         if os.path.isfile(target_path):
-            subprocess.Popen(f'explorer.exe /select,"{target_path}"', creationflags=creationflags)
+            subprocess.Popen(['explorer.exe', f'/select,{target_path}'])
         else:
-            subprocess.Popen(f'explorer.exe "{target_path}"', creationflags=creationflags)
+            try:
+                os.startfile(target_path)
+            except Exception:
+                subprocess.Popen(['explorer.exe', target_path])
 
         # Bring the Explorer window to front
-        time.sleep(0.35)
+        time.sleep(0.3)
         def enum_handler(hwnd, extra):
             if user32.IsWindowVisible(hwnd):
                 length = user32.GetWindowTextLengthW(hwnd)

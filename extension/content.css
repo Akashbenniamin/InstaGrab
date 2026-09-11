@@ -5,6 +5,7 @@
   position: relative !important;
 }
 
+/* Card Download Button (Feed / Grid) - Pinterest Red, NO Shadow, HOVER-ONLY */
 .instagrab-pin-btn {
   position: absolute !important;
   top: 12px !important;
@@ -17,33 +18,44 @@
   height: 36px !important;
   border-radius: 50% !important;
   padding: 0 !important;
-  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  background: #e60023 !important; /* Authentic Pinterest Red */
   color: #ffffff !important;
   border: none !important;
   cursor: pointer !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, opacity 0.2s ease !important;
-  opacity: 0.94 !important;
-  pointer-events: auto !important;
+  box-shadow: none !important;
+  opacity: 0 !important; /* Hidden by default */
+  pointer-events: none !important;
+  transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease !important;
   user-select: none !important;
   line-height: 1 !important;
 }
 
-.instagrab-pin-btn:hover {
-  transform: scale(1.12) !important;
+/* Reveal only when hovering over card container */
+.instagrab-pin-container:hover .instagrab-pin-btn,
+[data-test-id="pin"]:hover .instagrab-pin-btn,
+[data-test-id="pinWrapper"]:hover .instagrab-pin-btn,
+div[data-grid-item="true"]:hover .instagrab-pin-btn,
+div.Pin:hover .instagrab-pin-btn,
+a[href*="/pin/"]:hover .instagrab-pin-btn {
   opacity: 1 !important;
-  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.6) !important;
+  pointer-events: auto !important;
+}
+
+.instagrab-pin-btn:hover {
+  background: #ad081b !important; /* Darker Pinterest Red hover */
+  transform: scale(1.08) !important;
+  box-shadow: none !important;
 }
 
 .instagrab-pin-btn:active {
-  transform: scale(0.92) !important;
+  transform: scale(0.94) !important;
 }
 
 .instagrab-pin-btn svg {
   width: 18px !important;
   height: 18px !important;
-  stroke: currentColor !important;
-  stroke-width: 2.3 !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.4 !important;
   fill: none !important;
   flex-shrink: 0 !important;
 }
@@ -61,7 +73,61 @@
   background: #10b981 !important;
 }
 
-/* Pinterest Opened Post (in Text Fields) */
+/* Pinterest Opened Post - Top Action Row (Next to Red Save Button) */
+.instagrab-opened-top-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 24px !important;
+  background: #e60023 !important; /* Pinterest Red */
+  color: #ffffff !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  margin-right: 8px !important;
+  transition: background-color 0.15s ease, transform 0.15s ease !important;
+  vertical-align: middle !important;
+  user-select: none !important;
+}
+
+.instagrab-opened-top-btn:hover {
+  background: #ad081b !important;
+  transform: scale(1.03) !important;
+  box-shadow: none !important;
+}
+
+.instagrab-opened-top-btn:active {
+  transform: scale(0.96) !important;
+}
+
+.instagrab-opened-top-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.4 !important;
+  fill: none !important;
+}
+
+.instagrab-opened-top-btn.instagrab-loading {
+  background: #262626 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-opened-top-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-opened-top-btn.instagrab-success {
+  background: #10b981 !important;
+}
+
+/* Pinterest Opened Post - Description / Details Area */
 .instagrab-opened-wrap {
   margin: 14px 0 10px 0 !important;
   display: block !important;
@@ -74,36 +140,38 @@
   align-items: center !important;
   justify-content: center !important;
   gap: 8px !important;
-  padding: 10px 22px !important;
-  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  height: 40px !important;
+  padding: 0 20px !important;
+  background: #e60023 !important; /* Pinterest Red */
   color: #ffffff !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-size: 13px !important;
   font-weight: 700 !important;
-  border-radius: 9999px !important;
+  border-radius: 24px !important;
   border: none !important;
   cursor: pointer !important;
-  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.45) !important;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, transform 0.15s ease !important;
   text-decoration: none !important;
   pointer-events: auto !important;
   user-select: none !important;
 }
 
 .instagrab-opened-btn:hover {
-  transform: translateY(-1px) scale(1.02) !important;
-  box-shadow: 0 8px 25px rgba(225, 48, 108, 0.6) !important;
+  background: #ad081b !important;
+  transform: scale(1.03) !important;
+  box-shadow: none !important;
 }
 
 .instagrab-opened-btn:active {
-  transform: translateY(1px) scale(0.98) !important;
+  transform: scale(0.96) !important;
 }
 
 .instagrab-opened-btn svg {
   width: 17px !important;
   height: 17px !important;
-  stroke: currentColor !important;
-  stroke-width: 2.3 !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.4 !important;
   fill: none !important;
 }
 
@@ -138,14 +206,14 @@
   border: none !important;
   cursor: pointer !important;
   margin-right: 8px !important;
-  box-shadow: 0 3px 12px rgba(225, 48, 108, 0.35) !important;
-  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+  box-shadow: none !important;
+  transition: transform 0.18s ease, filter 0.18s ease !important;
   vertical-align: middle !important;
 }
 
 .instagrab-yt-btn:hover {
   transform: scale(1.04) !important;
-  box-shadow: 0 4px 18px rgba(225, 48, 108, 0.55) !important;
+  filter: brightness(1.1) !important;
 }
 
 .instagrab-yt-btn:active {
@@ -173,7 +241,16 @@
   background: #10b981 !important;
 }
 
-/* YouTube Shorts Action Button */
+/* YouTube Shorts Action Button Stack */
+.instagrab-yt-short-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 12px 0 6px 0 !important;
+  user-select: none !important;
+}
+
 .instagrab-yt-short-btn {
   display: flex !important;
   align-items: center !important;
@@ -181,30 +258,43 @@
   width: 48px !important;
   height: 48px !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
   color: #ffffff !important;
   border: none !important;
   cursor: pointer !important;
-  margin: 8px auto !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
-  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, transform 0.15s ease !important;
 }
 
 .instagrab-yt-short-btn:hover {
-  transform: scale(1.12) !important;
-  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.6) !important;
+  background: rgba(255, 255, 255, 0.28) !important;
+  transform: scale(1.08) !important;
+}
+
+.instagrab-yt-short-btn:active {
+  transform: scale(0.94) !important;
 }
 
 .instagrab-yt-short-btn svg {
   width: 22px !important;
   height: 22px !important;
-  stroke: currentColor !important;
-  stroke-width: 2.3 !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.2 !important;
   fill: none !important;
 }
 
+.instagrab-yt-short-label {
+  font-family: Roboto, Arial, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  color: #ffffff !important;
+  text-align: center !important;
+  margin-top: 5px !important;
+  letter-spacing: 0.1px !important;
+}
+
 .instagrab-yt-short-btn.instagrab-loading {
-  background: #272727 !important;
+  background: rgba(0, 0, 0, 0.6) !important;
   pointer-events: none !important;
 }
 
@@ -231,20 +321,20 @@
   cursor: pointer !important;
   margin-left: 6px !important;
   margin-right: 4px !important;
-  box-shadow: 0 3px 12px rgba(225, 48, 108, 0.35) !important;
-  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+  box-shadow: none !important;
+  transition: transform 0.18s ease, filter 0.18s ease !important;
   vertical-align: middle !important;
 }
 
 .instagrab-ig-btn:hover {
   transform: scale(1.12) !important;
-  box-shadow: 0 5px 18px rgba(225, 48, 108, 0.55) !important;
+  filter: brightness(1.1) !important;
 }
 
 .instagrab-ig-btn svg {
   width: 18px !important;
   height: 18px !important;
-  stroke: currentColor !important;
+  stroke: #ffffff !important;
   stroke-width: 2.3 !important;
   fill: none !important;
 }
@@ -275,19 +365,19 @@
   border: none !important;
   cursor: pointer !important;
   margin: 10px auto !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
-  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+  box-shadow: none !important;
+  transition: transform 0.18s ease, filter 0.18s ease !important;
 }
 
 .instagrab-ig-reel-btn:hover {
   transform: scale(1.12) !important;
-  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.6) !important;
+  filter: brightness(1.1) !important;
 }
 
 .instagrab-ig-reel-btn svg {
   width: 20px !important;
   height: 20px !important;
-  stroke: currentColor !important;
+  stroke: #ffffff !important;
   stroke-width: 2.3 !important;
   fill: none !important;
 }
@@ -305,7 +395,7 @@
   background: #10b981 !important;
 }
 
-/* ================= 4. COMMON ANIMATIONS & TOAST ================= */
+/* ================= 4. COMMON ANIMATIONS & TOAST WITH PROGRESS ================= */
 @keyframes instagrab-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -317,31 +407,109 @@
   right: 24px !important;
   z-index: 2147483647 !important;
   display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  padding: 12px 18px !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  width: 320px !important;
+  max-width: calc(100vw - 48px) !important;
+  padding: 14px 16px !important;
   border-radius: 16px !important;
-  background: rgba(18, 18, 18, 0.94) !important;
+  background: rgba(18, 20, 26, 0.96) !important;
   color: #ffffff !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  backdrop-filter: blur(12px) !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
-  transform: translateY(20px);
+  backdrop-filter: blur(16px) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12) !important;
+  transform: translateY(20px) scale(0.96);
   opacity: 0;
-  transition: transform 0.25s ease, opacity 0.25s ease !important;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   pointer-events: auto !important;
 }
 
 .instagrab-toast.show {
-  transform: translateY(0) !important;
+  transform: translateY(0) scale(1) !important;
   opacity: 1 !important;
 }
 
+.instagrab-toast-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+.instagrab-toast-title-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+}
+
 .instagrab-toast-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 20px !important;
+  height: 20px !important;
+  color: #E1306C !important;
+  flex-shrink: 0 !important;
+}
+
+.instagrab-toast-icon.success {
+  color: #10b981 !important;
+}
+
+.instagrab-toast-icon.error {
+  color: #ef4444 !important;
+}
+
+.instagrab-toast-icon svg {
+  width: 16px !important;
+  height: 16px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.5 !important;
+  fill: none !important;
+}
+
+.instagrab-toast-badge {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #10b981 !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.instagrab-toast-msg {
+  font-size: 12px !important;
+  color: #9ca3af !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.4 !important;
+}
+
+/* Live Progress Bar Track & Fill */
+.instagrab-toast-bar-track {
+  width: 100% !important;
+  height: 5px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  margin-top: 2px !important;
+}
+
+.instagrab-toast-bar-fill {
+  height: 100% !important;
+  width: 0% !important;
+  background: linear-gradient(90deg, #E1306C, #FCAF45) !important;
+  border-radius: 9999px !important;
+  transition: width 0.25s ease-out !important;
+}
+
+.instagrab-toast-bar-fill.complete {
+  background: #10b981 !important;
+}
+
+.instagrab-toast-bar-fill.error {
+  background: #ef4444 !important;
 }

@@ -62,8 +62,15 @@ function triggerBrowserDownload(fileUrl, filename) {
   });
 }
 
-// Trigger download via Desktop Engine, then invoke native browser download manager
-async function downloadMedia(url, formatType = 'video', quality = 'best') {
+// Trigger download via Desktop Engine, broadcast live progress to tab, then pipe to Browser Download Manager
+async function downloadMedia(url, formatType, quality, tabId = null) {
+  // Respect saved extension preferences if not explicitly set
+  if (!formatType || !quality) {
+    const prefs = await new Promise(r => chrome.storage.local.get(['pref_format', 'pref_quality'], r));
+    formatType = formatType || prefs.pref_format || 'video';
+    quality = quality || prefs.pref_quality || 'best';
+  }
+
   let token = await getAuthToken();
   if (!token) {
     return { 
@@ -74,7 +81,7 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
   }
 
   try {
-    // 1. Submit download request to Engine
+    // 1. Submit download request to Desktop Engine
     let resp = await fetch(`${HELPER_BASE}/api/download`, {
       method: 'POST',
       headers: {
@@ -122,12 +129,12 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
 
     const { downloadId } = await resp.json();
 
-    // 2. Poll for completion so we can pipe the completed file to the Browser Download Manager
+    // 2. Poll for live status & broadcast progress updates to the active tab
     const startTime = Date.now();
     let completedFilename = null;
 
-    while (Date.now() - startTime < 180000) { // 3 minute timeout
-      await new Promise(r => setTimeout(r, 800));
+    while (Date.now() - startTime < 300000) { // 5 minute timeout for large 4K files
+      await new Promise(r => setTimeout(r, 650));
 
       try {
         const sResp = await fetch(`${HELPER_BASE}/api/download/${downloadId}/status`, {
@@ -138,26 +145,58 @@ async function downloadMedia(url, formatType = 'video', quality = 'best') {
         });
         if (sResp.ok) {
           const status = await sResp.json();
+
+          // Broadcast real-time progress to the calling tab
+          if (tabId) {
+            chrome.tabs.sendMessage(tabId, {
+              action: 'downloadProgress',
+              downloadId,
+              state: status.state,
+              progress: status.progress || 0,
+              speed: status.speed || '',
+              eta: status.eta || '',
+              filename: status.filename || ''
+            }).catch(() => {});
+          }
+
           if (status.state === 'complete') {
             completedFilename = status.filename;
             break;
           } else if (status.state === 'error') {
+            if (tabId) {
+              chrome.tabs.sendMessage(tabId, {
+                action: 'downloadProgress',
+                downloadId,
+                state: 'error',
+                error: status.error || 'Download failed during processing'
+              }).catch(() => {});
+            }
             return { success: false, error: status.error || 'Download failed during extraction' };
           }
         }
       } catch (pollErr) {
-        console.warn('[InstaGrab] Polling error:', pollErr);
+        console.warn('[InstaGrab] Status poll error:', pollErr);
       }
     }
 
-    // 3. Trigger Browser Download Manager in Chrome/Edge/Brave!
+    // 3. Hand-off completed file to native Chrome / Browser Download Manager
     if (completedFilename) {
       const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(completedFilename)}?token=${token}`;
       await triggerBrowserDownload(streamUrl, completedFilename);
+
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'downloadProgress',
+          downloadId,
+          state: 'complete',
+          progress: 100,
+          filename: completedFilename
+        }).catch(() => {});
+      }
+
       return { success: true, filename: completedFilename, browserDownload: true };
     }
 
-    // If polling timed out but engine is still running in background
     return { success: true, background: true };
 
   } catch (err) {
@@ -176,7 +215,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   if (request.action === 'download') {
-    downloadMedia(request.url, request.format_type, request.quality).then(sendResponse);
+    const tabId = sender.tab ? sender.tab.id : null;
+    downloadMedia(request.url, request.format_type, request.quality, tabId).then(sendResponse);
     return true;
   }
 });
