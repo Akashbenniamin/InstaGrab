@@ -1,5 +1,4 @@
 import { HelperStatus as IHelperStatus } from '../types';
-import { ShieldAlert } from 'lucide-react';
 
 interface Props {
   status: IHelperStatus;
@@ -23,16 +22,19 @@ export function HelperStatus({ status, onSetupClick, onPairClick }: Props) {
 
   if (status.connected && !status.paired) {
     return (
-      <div className="flex flex-col sm:flex-row items-center justify-between py-3 px-4 rounded-xl bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-900/30 text-sm gap-3">
-        <div className="flex items-center space-x-2 text-yellow-700 dark:text-yellow-400 font-medium">
-          <ShieldAlert className="w-4 h-4" />
-          <span>Helper detected but not paired</span>
+      <div className="flex flex-col sm:flex-row items-center justify-between py-3 px-4 rounded-xl bg-pink-50 dark:bg-pink-900/10 border border-pink-200 dark:border-pink-900/30 text-sm gap-3">
+        <div className="flex items-center space-x-2 text-pink-700 dark:text-pink-400 font-medium">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-pink-500"></span>
+          </span>
+          <span>Helper detected — connecting...</span>
         </div>
         <button 
           onClick={onPairClick}
-          className="px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/40 hover:bg-yellow-200 dark:hover:bg-yellow-800/60 text-yellow-800 dark:text-yellow-300 rounded-lg font-semibold transition-colors text-xs"
+          className="px-3 py-1.5 insta-gradient text-white rounded-lg font-semibold transition-opacity text-xs hover:opacity-90 cursor-pointer"
         >
-          Pair Now
+          Connect
         </button>
       </div>
     );

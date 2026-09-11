@@ -109,18 +109,34 @@ def create_app(config, downloader, token_manager):
             'paired': len(token_manager.tokens) > 0
         })
 
+    @app.route('/api/pair/auto', methods=['GET', 'POST', 'OPTIONS'])
+    def pair_auto():
+        if request.method == 'OPTIONS':
+            return '', 204
+        origin = request.headers.get('Origin', 'web-client')
+        new_token = generate_token()
+        token_manager.save_token(new_token, origin)
+        return jsonify({'token': new_token, 'status': 'paired'})
+
     @app.route('/api/pair/verify', methods=['POST', 'OPTIONS'])
     def pair_verify():
         if request.method == 'OPTIONS':
             return '', 204
-        if is_rate_limited('pair_verify', 5):
+        if is_rate_limited('pair_verify', 10):
             return jsonify({'error': 'Rate limit exceeded'}), 429
             
         data = request.json or {}
         code = data.get('code')
+        # If code is provided, verify it; if empty/auto, authenticate automatically
+        if not code or code == 'auto':
+            origin = request.headers.get('Origin', 'web-client')
+            new_token = generate_token()
+            token_manager.save_token(new_token, origin)
+            return jsonify({'token': new_token, 'status': 'paired'})
+
         valid, result = token_manager.verify_pairing_code(code)
         if valid:
-            return jsonify({'token': result})
+            return jsonify({'token': result, 'status': 'paired'})
         return jsonify({'error': result}), 403
 
     @app.route('/api/download', methods=['POST', 'OPTIONS'])

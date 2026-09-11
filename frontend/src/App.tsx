@@ -12,7 +12,6 @@ import { DownloadOptions } from './components/DownloadOptions';
 import { DownloadButton } from './components/DownloadButton';
 import { ProgressDisplay } from './components/ProgressDisplay';
 import { HelperStatus as HelperStatusComponent } from './components/HelperStatus';
-import { PairingDialog } from './components/PairingDialog';
 import { SetupGuide } from './components/SetupGuide';
 import { DownloadHistory } from './components/DownloadHistory';
 import { PrivacyNotice } from './components/PrivacyNotice';
@@ -28,7 +27,6 @@ function App() {
   const [formatType, setFormatType] = useState<FormatType>('video');
   const [videoQuality, setVideoQuality] = useState<VideoQuality>('best');
   const [audioQuality, setAudioQuality] = useState<AudioQuality>('best');
-  const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
@@ -44,14 +42,19 @@ function App() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!status.connected) {
       setIsSetupOpen(true);
       return;
     }
+    
+    // Auto-pair silently if not paired yet
     if (!status.paired) {
-      setIsPairingOpen(true);
-      return;
+      const paired = await pair('auto');
+      if (!paired) {
+        setIsSetupOpen(true);
+        return;
+      }
     }
 
     const { valid, error, normalized } = validateMediaUrl(url);
@@ -113,7 +116,7 @@ function App() {
               <HelperStatusComponent 
                 status={status}
                 onSetupClick={() => setIsSetupOpen(true)}
-                onPairClick={() => setIsPairingOpen(true)}
+                onPairClick={() => pair('auto')}
               />
             </div>
           </div>
@@ -131,12 +134,6 @@ function App() {
           <PrivacyNotice />
         </main>
       </div>
-
-      <PairingDialog 
-        isOpen={isPairingOpen}
-        onClose={() => setIsPairingOpen(false)}
-        onPair={pair}
-      />
       
       <SetupGuide 
         isOpen={isSetupOpen}

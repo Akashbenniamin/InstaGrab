@@ -23,7 +23,37 @@ class HelperApi {
     return response.json();
   }
 
-  async pair(code: string): Promise<string> {
+  async autoPair(): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/pair/auto`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+      });
+      if (!response.ok) throw new Error('Auto pairing failed');
+      const data = await response.json();
+      if (data.token) {
+        localStorage.setItem('insta_dl_token', data.token);
+        return data.token;
+      }
+    } catch {
+      // Fallback to pair/verify with code: 'auto'
+      const response = await fetch(`${this.baseUrl}/api/pair/verify`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ code: 'auto' })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          localStorage.setItem('insta_dl_token', data.token);
+          return data.token;
+        }
+      }
+    }
+    throw new Error('Could not automatically pair');
+  }
+
+  async pair(code: string = 'auto'): Promise<string> {
     const response = await fetch(`${this.baseUrl}/api/pair/verify`, {
       method: 'POST',
       headers: this.getHeaders(),

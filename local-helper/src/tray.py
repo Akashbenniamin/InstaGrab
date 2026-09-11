@@ -26,9 +26,7 @@ class TrayApp:
         
         return pystray.Menu(
             pystray.MenuItem("InstaGrab Helper v1.0.0", None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(f"Pairing Code: {pairing_code}", None, enabled=False),
-            pystray.MenuItem("Regenerate Pairing Code", self.regenerate_code),
+            pystray.MenuItem("Status: Active (Auto-Connected)", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open Downloads Folder", self.open_downloads),
             pystray.MenuItem("Update yt-dlp", self.update_ytdlp),

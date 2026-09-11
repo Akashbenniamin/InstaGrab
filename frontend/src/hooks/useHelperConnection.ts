@@ -8,7 +8,18 @@ export function useHelperConnection() {
   const checkHealth = useCallback(async () => {
     try {
       const data = await helperApi.checkHealth();
-      const hasToken = !!localStorage.getItem('insta_dl_token');
+      let hasToken = !!localStorage.getItem('insta_dl_token');
+      
+      // If helper is detected and we don't have a token, auto-pair instantly!
+      if (!hasToken) {
+        try {
+          await helperApi.autoPair();
+          hasToken = true;
+        } catch (err) {
+          console.warn('Auto pair attempt failed:', err);
+        }
+      }
+
       setStatus({ 
         connected: true, 
         paired: hasToken,

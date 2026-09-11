@@ -77,7 +77,7 @@ def main():
         def show_init_notif():
             tray.show_notification(
                 "InstaGrab Helper Started",
-                f"Pairing code: {token_manager.get_pairing_code()}\nRight-click the tray icon for options."
+                "Helper is active! Ready to download directly from your browser."
             )
         timer = threading.Timer(2.0, show_init_notif)
         timer.daemon = True
