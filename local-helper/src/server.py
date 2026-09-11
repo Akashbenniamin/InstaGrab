@@ -228,58 +228,180 @@ def create_app(config, downloader, token_manager):
                     config.set(k, data[k])
             return jsonify(config.settings)
 
+    class STARTUPINFOW(ctypes.Structure):
+        _fields_ = [
+            ('cb', wintypes.DWORD),
+            ('lpReserved', wintypes.LPWSTR),
+            ('lpDesktop', wintypes.LPWSTR),
+            ('lpTitle', wintypes.LPWSTR),
+            ('dwX', wintypes.DWORD),
+            ('dwY', wintypes.DWORD),
+            ('dwXSize', wintypes.DWORD),
+            ('dwYSize', wintypes.DWORD),
+            ('dwXCountChars', wintypes.DWORD),
+            ('dwYCountChars', wintypes.DWORD),
+            ('dwFillAttribute', wintypes.DWORD),
+            ('dwFlags', wintypes.DWORD),
+            ('wShowWindow', wintypes.WORD),
+            ('cbReserved2', wintypes.WORD),
+            ('lpReserved2', ctypes.c_char_p),
+            ('hStdInput', wintypes.HANDLE),
+            ('hStdOutput', wintypes.HANDLE),
+            ('hStdError', wintypes.HANDLE),
+        ]
+
+    class PROCESS_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ('hProcess', wintypes.HANDLE),
+            ('hThread', wintypes.HANDLE),
+            ('dwProcessId', wintypes.DWORD),
+            ('dwThreadId', wintypes.DWORD)
+        ]
+
     def reveal_in_explorer(target_path):
         target_path = os.path.abspath(os.path.normpath(target_path))
         is_file = os.path.isfile(target_path)
         folder_path = os.path.dirname(target_path) if is_file else target_path
+        folder_name = os.path.basename(folder_path).lower()
 
-        # 1. Allow newly launched Explorer process to take foreground focus
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        # 1. Attach calling thread to interactive window station and desktop
+        hdesk = None
         try:
-            ctypes.windll.user32.AllowSetForegroundWindow(-1)
+            hwinsta = user32.OpenWindowStationW("WinSta0", False, 0x037F)
+            if hwinsta:
+                user32.SetProcessWindowStation(hwinsta)
+            hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
         except Exception:
             pass
 
-        # 2. Launch Explorer directly with shell=False (ZERO terminal/cmd popup, GUI subsystem)
+        # 2. Close any existing explorer windows displaying this folder to avoid duplicate windows and clutter
+        try:
+            h_prog = user32.FindWindowW("Progman", "Program Manager")
+            shell_pid = ctypes.c_ulong()
+            if h_prog:
+                user32.GetWindowThreadProcessId(h_prog, ctypes.byref(shell_pid))
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            def close_existing_cb(hwnd, lparam):
+                if user32.IsWindowVisible(hwnd):
+                    cbuff = ctypes.create_unicode_buffer(256)
+                    user32.GetClassNameW(hwnd, cbuff, 256)
+                    if cbuff.value in ('CabinetWClass', 'ExploreWClass'):
+                        length = user32.GetWindowTextLengthW(hwnd)
+                        if length > 0:
+                            tbuff = ctypes.create_unicode_buffer(length + 1)
+                            user32.GetWindowTextW(hwnd, tbuff, length + 1)
+                            title = tbuff.value.lower()
+                            if folder_name in title or (folder_name == 'instagrab' and 'instagrab' in title):
+                                wpid = ctypes.c_ulong()
+                                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wpid))
+                                user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                                if wpid.value and wpid.value != shell_pid.value:
+                                    hp = kernel32.OpenProcess(0x0001, False, wpid.value)
+                                    if hp:
+                                        kernel32.TerminateProcess(hp, 0)
+                                        kernel32.CloseHandle(hp)
+                return True
+
+            if hdesk:
+                user32.EnumDesktopWindows(hdesk, WNDENUMPROC(close_existing_cb), 0)
+            else:
+                user32.EnumWindows(WNDENUMPROC(close_existing_cb), 0)
+            time.sleep(0.08)
+        except Exception:
+            pass
+
+        # 3. Launch Explorer via Win32 CreateProcessW targeting WinSta0\Default directly (ZERO console popup)
         try:
             if is_file:
                 cmd = f'explorer.exe /select,"{target_path}"'
             else:
                 cmd = f'explorer.exe "{target_path}"'
-            
-            p = subprocess.Popen(cmd, shell=False)
-            p.wait(timeout=2)
+
+            si = STARTUPINFOW()
+            si.cb = ctypes.sizeof(STARTUPINFOW)
+            si.lpDesktop = 'WinSta0\\Default'
+            si.dwFlags = 1  # STARTF_USESHOWWINDOW
+            si.wShowWindow = 1  # SW_SHOWNORMAL
+
+            pi = PROCESS_INFORMATION()
+            ret = kernel32.CreateProcessW(None, cmd, None, None, False, 0, None, None, ctypes.byref(si), ctypes.byref(pi))
+            if ret:
+                kernel32.CloseHandle(pi.hProcess)
+                kernel32.CloseHandle(pi.hThread)
         except Exception:
             try:
                 os.startfile(folder_path)
             except Exception:
                 pass
 
-        # 3. Bring the Explorer window to front above browser
+        # 4. Find the opened Explorer window and bring to foreground above browser
         try:
-            time.sleep(0.2)
-            user32 = ctypes.windll.user32
-            folder_name = os.path.basename(folder_path)
+            target_hwnd = None
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            for _ in range(12):
+                time.sleep(0.15)
+                candidates = []
 
-            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_ssize_t)
-            def enum_handler(hwnd, lparam):
-                if user32.IsWindowVisible(hwnd):
-                    class_buff = ctypes.create_unicode_buffer(256)
-                    user32.GetClassNameW(hwnd, class_buff, 256)
-                    if class_buff.value in ('CabinetWClass', 'ExploreWClass'):
-                        length = user32.GetWindowTextLengthW(hwnd)
-                        if length > 0:
-                            buff = ctypes.create_unicode_buffer(length + 1)
-                            user32.GetWindowTextW(hwnd, buff, length + 1)
-                            title = buff.value
-                            if folder_name.lower() in title.lower() or 'download' in title.lower() or 'instagrab' in title.lower():
-                                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                                user32.BringWindowToTop(hwnd)
-                                user32.SetForegroundWindow(hwnd)
-                                return False
-                return True
+                def find_cb(hwnd, lparam):
+                    if user32.IsWindowVisible(hwnd):
+                        cbuff = ctypes.create_unicode_buffer(256)
+                        user32.GetClassNameW(hwnd, cbuff, 256)
+                        if cbuff.value in ('CabinetWClass', 'ExploreWClass'):
+                            length = user32.GetWindowTextLengthW(hwnd)
+                            if length > 0:
+                                tbuff = ctypes.create_unicode_buffer(length + 1)
+                                user32.GetWindowTextW(hwnd, tbuff, length + 1)
+                                candidates.append((hwnd, tbuff.value.lower()))
+                    return True
 
-            cb = WNDENUMPROC(enum_handler)
-            user32.EnumWindows(cb, 0)
+                if hdesk:
+                    user32.EnumDesktopWindows(hdesk, WNDENUMPROC(find_cb), 0)
+                else:
+                    user32.EnumWindows(WNDENUMPROC(find_cb), 0)
+
+                for hwnd, title in candidates:
+                    if folder_name in title or 'instagrab' in title or 'download' in title:
+                        target_hwnd = hwnd
+                        break
+                if target_hwnd:
+                    break
+
+            if target_hwnd:
+                hwnd = target_hwnd
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+
+                fg_hwnd = user32.GetForegroundWindow()
+                fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None)
+                target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+                cur_tid = kernel32.GetCurrentThreadId()
+
+                if fg_tid and fg_tid != cur_tid:
+                    user32.AttachThreadInput(cur_tid, fg_tid, True)
+                if target_tid and target_tid != cur_tid and target_tid != fg_tid:
+                    user32.AttachThreadInput(cur_tid, target_tid, True)
+
+                user32.keybd_event(0x12, 0, 0, 0)
+                user32.keybd_event(0x12, 0, 2, 0)
+
+                user32.AllowSetForegroundWindow(0xFFFFFFFF)
+
+                SWP_FLAGS = 0x0001 | 0x0002 | 0x0040
+                user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, SWP_FLAGS)
+                user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, SWP_FLAGS)
+
+                user32.BringWindowToTop(hwnd)
+                user32.SetForegroundWindow(hwnd)
+
+                if target_tid and target_tid != cur_tid and target_tid != fg_tid:
+                    user32.AttachThreadInput(cur_tid, target_tid, False)
+                if fg_tid and fg_tid != cur_tid:
+                    user32.AttachThreadInput(cur_tid, fg_tid, False)
         except Exception:
             pass
 

@@ -64,6 +64,20 @@ def start_server(app, port):
 
 def main():
     """Main entry point for the InstaGrab helper application."""
+    # Ensure helper runs on interactive desktop WinSta0\Default
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwinsta = user32.OpenWindowStationW("WinSta0", False, 0x037F)
+            if hwinsta:
+                user32.SetProcessWindowStation(hwinsta)
+            hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
     # Load configuration first to get the port
     config = Config()
     config.load()
