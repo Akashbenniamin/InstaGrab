@@ -1,8 +1,27 @@
 {
   "manifest_version": 3,
   "name": "InstaGrab - 1-Click Media Downloader",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Download Pinterest videos and images directly with 1-click via InstaGrab Desktop Engine.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.pinterest.com/*",
+    "*://*.pinterest.ca/*",
+    "*://*.pinterest.co.uk/*",
+    "*://*.pinterest.de/*",
+    "*://*.pinterest.fr/*",
+    "*://*.pinterest.es/*",
+    "*://*.pinterest.it/*",
+    "*://*.pinterest.jp/*",
+    "*://*.pinterest.com.au/*",
+    "http://127.0.0.1:18765/*",
+    "http://localhost:18765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "InstaGrab Downloader",
@@ -17,18 +36,18 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": [
-    "storage"
-  ],
-  "host_permissions": [
-    "*://*.pinterest.com/*",
-    "http://127.0.0.1:18765/*",
-    "http://localhost:18765/*"
-  ],
   "content_scripts": [
     {
       "matches": [
-        "*://*.pinterest.com/*"
+        "*://*.pinterest.com/*",
+        "*://*.pinterest.ca/*",
+        "*://*.pinterest.co.uk/*",
+        "*://*.pinterest.de/*",
+        "*://*.pinterest.fr/*",
+        "*://*.pinterest.es/*",
+        "*://*.pinterest.it/*",
+        "*://*.pinterest.jp/*",
+        "*://*.pinterest.com.au/*"
       ],
       "js": [
         "content.js"

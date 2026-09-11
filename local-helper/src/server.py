@@ -55,12 +55,18 @@ def create_app(config, downloader, token_manager):
             return True
         if re.match(r'^https://[a-zA-Z0-9_-]+\.vercel\.app$', origin):
             return True
+        # Allow Pinterest domains (e.g. in.pinterest.com, www.pinterest.com, pinterest.com, pinterest.co.uk)
+        if re.match(r'^https://([a-zA-Z0-9-]+\.)*pinterest\.[a-z.]+$', origin):
+            return True
+        # Allow browser extensions (Chrome, Edge, Brave, Firefox)
+        if origin.startswith('chrome-extension://') or origin.startswith('moz-extension://') or origin.startswith('extension://'):
+            return True
         return False
 
     @app.before_request
     def security_middleware():
         if request.method == 'OPTIONS':
-            return
+            return make_response('', 204)
 
         host = request.headers.get('Host', '')
         port = config.get('port')
@@ -105,7 +111,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.0.5',
+            'version': '1.0.6',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0

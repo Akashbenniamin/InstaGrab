@@ -411,10 +411,14 @@ export const SettingsModal: React.FC<Props> = ({
                 <a
                   href={`${import.meta.env.BASE_URL}instagrab-extension.zip`}
                   download="instagrab-extension.zip"
-                  className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white text-xs font-bold hover:opacity-95 shadow-xs transition-opacity cursor-pointer text-center"
-                  style={{ background: 'var(--btn-primary-bg)' }}
+                  className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold hover:opacity-95 transition-all duration-200 cursor-pointer text-center active:scale-95"
+                  style={{
+                    background: 'var(--btn-primary-bg)',
+                    color: 'var(--btn-primary-text)',
+                    boxShadow: 'var(--btn-primary-shadow)',
+                  }}
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-4 h-4 shrink-0" />
                   <span>Download Extension (.zip)</span>
                 </a>
               </div>
