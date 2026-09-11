@@ -48,8 +48,8 @@ function App() {
       return;
     }
     
-    // Auto-pair silently if not paired yet
-    if (!status.paired) {
+    // Auto-pair silently if not paired yet or if token is missing
+    if (!status.paired || !localStorage.getItem('insta_dl_token')) {
       const paired = await pair('auto');
       if (!paired) {
         setIsSetupOpen(true);
@@ -59,7 +59,7 @@ function App() {
 
     const { valid, error, normalized } = validateMediaUrl(url);
     if (!valid) {
-      setUrlError(error || 'Please enter a valid Instagram or YouTube URL');
+      setUrlError(error || 'Please enter a valid Instagram, YouTube, or Pinterest URL');
       return;
     }
 

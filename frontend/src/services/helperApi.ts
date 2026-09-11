@@ -17,29 +17,58 @@ class HelperApi {
 
   async checkHealth(): Promise<HelperHealthResponse> {
     const response = await fetch(`${this.baseUrl}/api/health`, {
-      headers: this.getHeaders()
+      headers: {
+        'X-Requested-With': 'InstaGrab'
+      }
     });
     if (!response.ok) throw new Error('Helper not healthy');
     return response.json();
   }
 
+  async validateToken(): Promise<boolean> {
+    const token = localStorage.getItem('insta_dl_token');
+    if (!token) return false;
+    try {
+      const response = await fetch(`${this.baseUrl}/api/config`, {
+        headers: this.getHeaders()
+      });
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('insta_dl_token');
+        return false;
+      }
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   async autoPair(): Promise<string> {
+    const cleanHeaders = {
+      'X-Requested-With': 'InstaGrab',
+      'Content-Type': 'application/json'
+    };
+
     try {
       const response = await fetch(`${this.baseUrl}/api/pair/auto`, {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers: cleanHeaders,
       });
-      if (!response.ok) throw new Error('Auto pairing failed');
-      const data = await response.json();
-      if (data.token) {
-        localStorage.setItem('insta_dl_token', data.token);
-        return data.token;
+      if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          localStorage.setItem('insta_dl_token', data.token);
+          return data.token;
+        }
       }
     } catch {
+      // Fallback below
+    }
+
+    try {
       // Fallback to pair/verify with code: 'auto'
       const response = await fetch(`${this.baseUrl}/api/pair/verify`, {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers: cleanHeaders,
         body: JSON.stringify({ code: 'auto' })
       });
       if (response.ok) {
@@ -49,14 +78,20 @@ class HelperApi {
           return data.token;
         }
       }
+    } catch {
+      // Fallback failed
     }
+
     throw new Error('Could not automatically pair');
   }
 
   async pair(code: string = 'auto'): Promise<string> {
     const response = await fetch(`${this.baseUrl}/api/pair/verify`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      headers: {
+        'X-Requested-With': 'InstaGrab',
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ code })
     });
     if (!response.ok) throw new Error('Pairing failed');
@@ -69,7 +104,7 @@ class HelperApi {
   }
 
   async startDownload(url: string, formatType: string = 'video', quality: string = 'best'): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/api/download`, {
+    let response = await fetch(`${this.baseUrl}/api/download`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({ 
@@ -78,6 +113,25 @@ class HelperApi {
         quality
       })
     });
+    
+    // Auto-repair on 401/403 (token expired or invalidated)
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem('insta_dl_token');
+      try {
+        await this.autoPair();
+        response = await fetch(`${this.baseUrl}/api/download`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: JSON.stringify({ 
+            url,
+            format_type: formatType,
+            quality
+          })
+        });
+      } catch {
+        throw new Error('UNAUTHORIZED');
+      }
+    }
     
     if (response.status === 401 || response.status === 403) {
       throw new Error('UNAUTHORIZED');
@@ -89,9 +143,22 @@ class HelperApi {
   }
 
   async getDownloadStatus(downloadId: string): Promise<HelperStatusResponse> {
-    const response = await fetch(`${this.baseUrl}/api/download/${downloadId}/status`, {
+    let response = await fetch(`${this.baseUrl}/api/download/${downloadId}/status`, {
       headers: this.getHeaders()
     });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem('insta_dl_token');
+      try {
+        await this.autoPair();
+        response = await fetch(`${this.baseUrl}/api/download/${downloadId}/status`, {
+          headers: this.getHeaders()
+        });
+      } catch {
+        throw new Error('UNAUTHORIZED');
+      }
+    }
+
     if (!response.ok) throw new Error('Failed to get status');
     return response.json();
   }

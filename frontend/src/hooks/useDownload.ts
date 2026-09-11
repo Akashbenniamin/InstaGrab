@@ -72,7 +72,8 @@ export function useDownload() {
       
     } catch (error: any) {
       if (error.message === 'UNAUTHORIZED') {
-        setDownloadState({ id: 'error', state: 'error', errorType: 'helper_offline', error: 'Not authorized. Please pair again.' });
+        localStorage.removeItem('insta_dl_token');
+        setDownloadState({ id: 'error', state: 'error', errorType: 'helper_offline', error: 'Authorization refreshed. Please click Try Again.' });
       } else {
         setDownloadState({ id: 'error', state: 'error', errorType: 'network', error: error.message });
       }
