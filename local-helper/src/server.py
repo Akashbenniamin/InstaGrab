@@ -1,5 +1,10 @@
 import os
 import subprocess
+import ctypes
+try:
+    import win32com.client
+except ImportError:
+    win32com = None
 from flask import Flask, request, jsonify, make_response, send_file
 from flask_cors import CORS
 from functools import wraps
@@ -213,22 +218,96 @@ def create_app(config, downloader, token_manager):
                     config.set(k, data[k])
             return jsonify(config.settings)
 
-    def reveal_in_explorer(target_path):
-        target_path = os.path.normpath(target_path)
+    def bring_window_to_front(hwnd):
         try:
-            if os.path.isfile(target_path):
-                subprocess.Popen(['explorer.exe', f'/select,{target_path}'], creationflags=0x08000000)
-            elif os.path.isdir(target_path):
-                os.startfile(target_path)
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.BringWindowToTop(hwnd)
+            user32.keybd_event(0x12, 0, 0, 0)
+            user32.keybd_event(0x12, 0, 2, 0)
+            fg_hwnd = user32.GetForegroundWindow()
+            if fg_hwnd and fg_hwnd != hwnd:
+                fg_thread = user32.GetWindowThreadProcessId(fg_hwnd, None)
+                cur_thread = kernel32.GetCurrentThreadId()
+                user32.AttachThreadInput(cur_thread, fg_thread, True)
+                user32.SetForegroundWindow(hwnd)
+                user32.SetFocus(hwnd)
+                user32.AttachThreadInput(cur_thread, fg_thread, False)
             else:
-                download_path = os.path.normpath(config.get_download_path())
-                os.startfile(download_path)
+                user32.SetForegroundWindow(hwnd)
+            SWP_FLAGS = 0x0001 | 0x0002 | 0x0040
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, SWP_FLAGS)
+            user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, SWP_FLAGS)
         except Exception:
-            try:
-                folder = os.path.dirname(target_path) if os.path.isfile(target_path) else target_path
-                os.startfile(folder)
-            except Exception:
-                pass
+            pass
+
+    def reveal_in_explorer(target_path):
+        target_path = os.path.abspath(os.path.normpath(target_path))
+        is_file = os.path.isfile(target_path)
+        folder_path = os.path.dirname(target_path) if is_file else target_path
+        filename = os.path.basename(target_path) if is_file else None
+
+        # 1. Reuse existing open Explorer window if present
+        try:
+            if win32com:
+                shell = win32com.client.Dispatch('Shell.Application')
+                windows = shell.Windows()
+                for i in range(windows.Count):
+                    w = windows.Item(i)
+                    if w is None:
+                        continue
+                    try:
+                        p = getattr(w.Document.Folder.Self, 'Path', None)
+                        if p and os.path.exists(p) and os.path.exists(folder_path) and os.path.samefile(p, folder_path):
+                            if is_file and filename:
+                                item = w.Document.Folder.ParseName(filename)
+                                if item:
+                                    w.Document.SelectItem(item, 29)
+                            bring_window_to_front(w.HWND)
+                            return True
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        # 2. Open folder using ShellExecuteW (never hangs, no console popup, no orphaned processes)
+        try:
+            ctypes.windll.user32.AllowSetForegroundWindow(-1)
+            ret = ctypes.windll.shell32.ShellExecuteW(None, 'open', folder_path, None, None, 1)
+            if ret > 32:
+                time.sleep(0.4)
+                try:
+                    if win32com:
+                        shell = win32com.client.Dispatch('Shell.Application')
+                        windows = shell.Windows()
+                        for i in range(windows.Count):
+                            w = windows.Item(i)
+                            if w is None:
+                                continue
+                            try:
+                                p = getattr(w.Document.Folder.Self, 'Path', None)
+                                if p and os.path.exists(p) and os.path.exists(folder_path) and os.path.samefile(p, folder_path):
+                                    if is_file and filename:
+                                        item = w.Document.Folder.ParseName(filename)
+                                        if item:
+                                            w.Document.SelectItem(item, 29)
+                                    bring_window_to_front(w.HWND)
+                                    break
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
+                return True
+        except Exception:
+            pass
+
+        # 3. Fallback: os.startfile
+        try:
+            os.startfile(folder_path)
+            return True
+        except Exception:
+            return False
 
     @app.route('/api/open-file', methods=['POST', 'OPTIONS'])
     def open_file():

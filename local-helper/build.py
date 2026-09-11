@@ -19,6 +19,8 @@ def build():
         '--hidden-import=flask_cors',
         '--hidden-import=yt_dlp',
         '--hidden-import=PIL',
+        '--hidden-import=win32com',
+        '--hidden-import=win32com.client',
         '--distpath=dist',
         '--workpath=build',
     ])
