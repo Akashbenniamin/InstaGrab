@@ -1,0 +1,38 @@
+# Dependencies
+frontend/node_modules/
+local-helper/venv/
+local-helper/__pycache__/
+local-helper/src/__pycache__/
+local-helper/tests/__pycache__/
+
+# Build outputs
+frontend/dist/
+frontend/tsconfig.app.tsbuildinfo
+local-helper/dist/
+local-helper/build/
+local-helper/*.spec
+
+# FFmpeg (downloaded during build)
+local-helper/ffmpeg/
+local-helper/ffmpeg_temp.zip
+local-helper/ffmpeg_extract/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test artifacts
+local-helper/temp_appdata/
+local-helper/.pytest_cache/
+.pytest_cache/
+
+# Logs
+*.log
+

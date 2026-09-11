@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-insta-pink: #E1306C;
+  --color-insta-purple: #833AB4;
+  --color-insta-orange: #F56040;
+  --color-insta-yellow: #FCAF45;
+}
+
+@layer base {
+  :root {
+    --bg-main: #f9fafb;
+    --bg-card: #ffffff;
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --border-color: #e5e7eb;
+    --overlay-bg: rgba(0, 0, 0, 0.5);
+  }
+
+  html.dark {
+    --bg-main: #0a0a0a;
+    --bg-card: #1a1a1a;
+    --text-primary: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --border-color: #374151;
+    --overlay-bg: rgba(0, 0, 0, 0.8);
+  }
+
+  body {
+    @apply bg-[var(--bg-main)] text-[var(--text-primary)] transition-colors duration-300 antialiased min-h-screen;
+  }
+}
+
+@utility insta-gradient {
+  background-image: linear-gradient(to top right, var(--color-insta-yellow), var(--color-insta-pink), var(--color-insta-purple));
+}
+
+@utility insta-text-gradient {
+  background-image: linear-gradient(to top right, var(--color-insta-yellow), var(--color-insta-pink), var(--color-insta-purple));
+  background-clip: text;
+  color: transparent;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-600;
+}

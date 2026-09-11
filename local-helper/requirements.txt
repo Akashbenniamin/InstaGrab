@@ -1,0 +1,6 @@
+flask>=3.0
+flask-cors>=4.0
+yt-dlp>=2024.0
+pystray>=0.19
+Pillow>=10.0
+waitress>=3.0

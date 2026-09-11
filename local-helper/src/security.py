@@ -1,0 +1,140 @@
+import os
+import json
+import secrets
+import random
+import re
+from urllib.parse import urlparse, urlunparse
+
+def generate_token(length=64) -> str:
+    return secrets.token_urlsafe(length)
+
+def generate_pairing_code() -> str:
+    return ''.join(str(random.randint(0, 9)) for _ in range(6))
+
+def sanitize_filename(name: str) -> str:
+    # Remove or replace dangerous chars
+    name = re.sub(r'[<>:"/\\|?*]', '_', name)
+    name = re.sub(r'[\x00-\x1f]', '', name)
+    # limit length
+    return name[:200]
+
+def is_safe_path(base_dir: str, path: str) -> bool:
+    base_dir = os.path.realpath(base_dir)
+    path = os.path.realpath(path)
+    return path.startswith(base_dir)
+
+def validate_media_url(url: str) -> tuple[bool, str, str]:
+    """
+    Validates Instagram and YouTube URLs.
+    Returns (is_valid, error_message, platform).
+    Platform is 'instagram', 'youtube', or 'unknown'.
+    """
+    if not url or not isinstance(url, str):
+        return False, "URL is required", "unknown"
+
+    url = url.strip()
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return False, "Invalid URL format", "unknown"
+        clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+    except Exception:
+        return False, "Invalid URL format", "unknown"
+
+    netloc = parsed.netloc.lower()
+
+    # 1. Instagram validation
+    if any(domain in netloc for domain in ['instagram.com', 'instagr.am']):
+        ig_pattern = r'^https?://(www\.)?(instagram\.com|instagr\.am)/(reel|p|tv)/[A-Za-z0-9_-]+/?$'
+        if re.match(ig_pattern, clean_url):
+            return True, "", "instagram"
+        return False, "Invalid Instagram URL. Only reel, p, or tv links are accepted.", "instagram"
+
+    # 2. YouTube validation (Shorts, Videos, youtu.be, clips, live)
+    if 'youtu.be' in netloc:
+        yt_short_pattern = r'^https?://youtu\.be/[A-Za-z0-9_-]+/?$'
+        if re.match(yt_short_pattern, clean_url):
+            return True, "", "youtube"
+        return False, "Invalid YouTube short link.", "youtube"
+
+    if any(domain in netloc for domain in ['youtube.com', 'm.youtube.com', 'www.youtube.com']):
+        # Check shorts
+        if '/shorts/' in parsed.path:
+            yt_shorts_pattern = r'^https?://(www\.|m\.)?youtube\.com/shorts/[A-Za-z0-9_-]+/?$'
+            if re.match(yt_shorts_pattern, clean_url):
+                return True, "", "youtube"
+            return False, "Invalid YouTube Shorts URL.", "youtube"
+
+        # Check watch?v=...
+        if parsed.path.rstrip('/') in ['/watch', '/watch_popup']:
+            # For watch URLs, we need the query parameter v=
+            from urllib.parse import parse_qs
+            qs = parse_qs(parsed.query)
+            if 'v' in qs and qs['v'] and re.match(r'^[A-Za-z0-9_-]+$', qs['v'][0]):
+                return True, "", "youtube"
+            return False, "Invalid YouTube video URL (missing or invalid video ID).", "youtube"
+
+        # Check /live/, /embed/, /v/
+        yt_embed_pattern = r'^https?://(www\.|m\.)?youtube\.com/(live|embed|v|clip)/[A-Za-z0-9_-]+/?$'
+        if re.match(yt_embed_pattern, clean_url):
+            return True, "", "youtube"
+
+        return False, "Invalid YouTube URL format.", "youtube"
+
+    return False, "Unsupported platform. Please enter an Instagram or YouTube URL.", "unknown"
+
+
+def validate_instagram_url(url: str) -> tuple[bool, str]:
+    """Compatibility wrapper for Instagram-only validation."""
+    valid, err, platform = validate_media_url(url)
+    if valid and platform == 'instagram':
+        return True, ""
+    return valid, err
+
+
+class TokenManager:
+    def __init__(self):
+        appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+        self.config_dir = os.path.join(appdata, 'InstaGrab')
+        self.tokens_file = os.path.join(self.config_dir, 'tokens.json')
+        self.tokens = {}
+        self.pairing_code = ""
+        self._load()
+
+    def _load(self):
+        try:
+            if os.path.exists(self.tokens_file):
+                with open(self.tokens_file, 'r', encoding='utf-8') as f:
+                    self.tokens = json.load(f)
+        except Exception:
+            self.tokens = {}
+
+    def _save(self):
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+            with open(self.tokens_file, 'w', encoding='utf-8') as f:
+                json.dump(self.tokens, f)
+        except Exception:
+            pass
+
+    def save_token(self, token: str, origin: str):
+        self.tokens[token] = {'origin': origin}
+        self._save()
+
+    def verify_token(self, token: str) -> bool:
+        return token in self.tokens
+
+    def get_pairing_code(self) -> str:
+        return self.pairing_code
+
+    def set_pairing_code(self, code: str):
+        self.pairing_code = code
+
+    def verify_pairing_code(self, code: str) -> tuple[bool, str]:
+        if self.pairing_code and code == self.pairing_code:
+            # Consume the code and generate a new one
+            self.pairing_code = generate_pairing_code()
+            new_token = generate_token()
+            self.save_token(new_token, "paired")
+            return True, new_token
+        return False, "Invalid or expired pairing code"
