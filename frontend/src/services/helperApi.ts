@@ -169,6 +169,20 @@ class HelperApi {
       headers: this.getHeaders()
     });
   }
+
+  async openFile(filepath?: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/open-file`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ filepath })
+      });
+      return response.ok;
+    } catch (e) {
+      console.error('Failed to open file:', e);
+      return false;
+    }
+  }
 }
 
 export const helperApi = new HelperApi();

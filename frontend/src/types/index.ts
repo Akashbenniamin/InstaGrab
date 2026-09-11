@@ -33,6 +33,7 @@ export interface HistoryEntry {
   success: boolean;
   platform?: PlatformType;
   format?: FormatType;
+  filepath?: string;
 }
 
 export interface HelperHealthResponse {

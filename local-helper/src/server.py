@@ -1,3 +1,5 @@
+import os
+import subprocess
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from functools import wraps
@@ -188,5 +190,27 @@ def create_app(config, downloader, token_manager):
                 if k in data:
                     config.set(k, data[k])
             return jsonify(config.settings)
+
+    @app.route('/api/open-file', methods=['POST', 'OPTIONS'])
+    def open_file():
+        if request.method == 'OPTIONS':
+            return '', 204
+        data = request.json or {}
+        filepath = data.get('filepath')
+        download_path = config.get_download_path()
+        
+        import subprocess
+        try:
+            if filepath and os.path.exists(filepath):
+                # On Windows, explorer /select,"<filepath>" opens File Explorer with file highlighted!
+                subprocess.Popen(['explorer', f'/select,{os.path.normpath(filepath)}'])
+                return jsonify({'status': 'ok', 'opened': 'file'})
+            elif os.path.exists(download_path):
+                # If specific file is missing, open the download folder
+                subprocess.Popen(['explorer', os.path.normpath(download_path)])
+                return jsonify({'status': 'ok', 'opened': 'folder'})
+            return jsonify({'error': 'Path not found'}), 404
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     return app

@@ -20,7 +20,14 @@ import { MobileNotice } from './components/MobileNotice';
 function App() {
   const { theme, toggleTheme } = useTheme();
   const { status, pair } = useHelperConnection();
-  const { downloadState, startDownload, reset } = useDownload();
+  const { 
+    downloads, 
+    isSubmitting, 
+    startDownload, 
+    cancelDownload, 
+    dismissDownload, 
+    clearCompleted 
+  } = useDownload();
   
   const [url, setUrl] = useState('');
   const [urlError, setUrlError] = useState('');
@@ -32,14 +39,11 @@ function App() {
 
   useEffect(() => {
     setHistory(getHistory());
-  }, [downloadState?.state]); // Refresh history when download finishes
+  }, [downloads]); // Refresh history whenever downloads update
 
   const handleUrlChange = (value: string) => {
     setUrl(value);
     setUrlError('');
-    if (downloadState?.state === 'error' || downloadState?.state === 'complete' || downloadState?.state === 'cancelled') {
-      reset();
-    }
   };
 
   const handleDownload = async () => {
@@ -63,8 +67,14 @@ function App() {
       return;
     }
 
+    const targetUrl = normalized!;
     const quality = formatType === 'video' ? videoQuality : audioQuality;
-    startDownload(normalized!, formatType, quality);
+    
+    // Reset input immediately so user can queue another download right away!
+    setUrl('');
+    setUrlError('');
+
+    await startDownload(targetUrl, formatType, quality);
   };
 
   const handleClearHistory = () => {
@@ -72,67 +82,74 @@ function App() {
     setHistory([]);
   };
 
-  const isLoading = downloadState !== null && 
-                   downloadState.state !== 'complete' && 
-                   downloadState.state !== 'error' && 
-                   downloadState.state !== 'cancelled';
-
   return (
     <div className="min-h-screen bg-[var(--bg-main)]">
-      <div className="max-w-[640px] mx-auto px-4 pb-12 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto px-4 pb-12 sm:px-6 lg:px-8">
         <Header theme={theme} toggleTheme={toggleTheme} />
         
-        <main className="mt-8 space-y-6">
-          <MobileNotice isConnected={status.connected} />
-          
-          <div className="bg-[var(--bg-card)] rounded-3xl p-4 sm:p-8 shadow-sm border border-[var(--border-color)]">
-            <div className="space-y-6">
-              <UrlInput 
-                value={url}
-                onChange={handleUrlChange}
-                onSubmit={handleDownload}
-                disabled={isLoading}
-                error={urlError}
-              />
+        <div className="mt-8 flex flex-col lg:flex-row gap-8 items-start">
+          {/* Left Column: Recent Downloads (Sticky on desktop, utilizing free empty space) */}
+          <aside className="w-full lg:w-80 lg:sticky lg:top-8 order-2 lg:order-1 flex-shrink-0">
+            <DownloadHistory 
+              history={history}
+              onClear={handleClearHistory}
+            />
+          </aside>
 
-              <DownloadOptions
-                formatType={formatType}
-                onFormatChange={setFormatType}
-                videoQuality={videoQuality}
-                onVideoQualityChange={setVideoQuality}
-                audioQuality={audioQuality}
-                onAudioQualityChange={setAudioQuality}
-                disabled={isLoading}
-              />
-              
-              <DownloadButton 
-                onClick={handleDownload}
-                disabled={!url || !!urlError}
-                loading={isLoading}
-                state={downloadState?.state || 'idle'}
-                formatType={formatType}
-              />
+          {/* Right / Main Column: Downloader Card & Active Jobs Queue */}
+          <main className="flex-1 w-full max-w-2xl mx-auto order-1 lg:order-2 space-y-6">
+            <MobileNotice isConnected={status.connected} />
+            
+            <div className="bg-[var(--bg-card)] rounded-3xl p-4 sm:p-8 shadow-sm border border-[var(--border-color)]">
+              <div className="space-y-6">
+                <UrlInput 
+                  value={url}
+                  onChange={handleUrlChange}
+                  onSubmit={handleDownload}
+                  disabled={isSubmitting}
+                  error={urlError}
+                />
 
-              <HelperStatusComponent 
-                status={status}
-                onSetupClick={() => setIsSetupOpen(true)}
-                onPairClick={() => pair('auto')}
-              />
+                <DownloadOptions
+                  formatType={formatType}
+                  onFormatChange={setFormatType}
+                  videoQuality={videoQuality}
+                  onVideoQualityChange={setVideoQuality}
+                  audioQuality={audioQuality}
+                  onAudioQualityChange={setAudioQuality}
+                  disabled={isSubmitting}
+                />
+                
+                <DownloadButton 
+                  onClick={handleDownload}
+                  disabled={!url || !!urlError}
+                  loading={isSubmitting}
+                  formatType={formatType}
+                />
+
+                <HelperStatusComponent 
+                  status={status}
+                  onSetupClick={() => setIsSetupOpen(true)}
+                  onPairClick={() => pair('auto')}
+                />
+              </div>
             </div>
-          </div>
 
-          <ProgressDisplay 
-            progress={downloadState} 
-            onRetry={handleDownload}
-          />
-          
-          <DownloadHistory 
-            history={history}
-            onClear={handleClearHistory}
-          />
+            {/* Active Concurrent Downloads Queue */}
+            <ProgressDisplay 
+              downloads={downloads}
+              onCancel={cancelDownload}
+              onDismiss={dismissDownload}
+              onClearCompleted={clearCompleted}
+              onRetry={(item) => {
+                dismissDownload(item.id);
+                // If the user had a failed download, auto-refill or retry
+              }}
+            />
 
-          <PrivacyNotice />
-        </main>
+            <PrivacyNotice />
+          </main>
+        </div>
       </div>
       
       <SetupGuide 

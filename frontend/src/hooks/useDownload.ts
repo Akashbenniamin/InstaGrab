@@ -4,102 +4,155 @@ import { helperApi } from '../services/helperApi';
 import { addEntry } from '../services/downloadHistory';
 
 export function useDownload() {
-  const [downloadState, setDownloadState] = useState<DownloadProgress | null>(null);
+  const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Track original URLs for each download ID
+  const urlMapRef = useRef<Map<string, string>>(new Map());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const clearPolling = () => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  };
+  const pollActiveDownloads = useCallback(async () => {
+    setDownloads(currentDownloads => {
+      // Find active downloads that need polling
+      const active = currentDownloads.filter(d => 
+        !['complete', 'error', 'cancelled'].includes(d.state) && !d.id.startsWith('temp_')
+      );
 
-  const pollStatus = useCallback(async (id: string, originalUrl: string) => {
-    try {
-      const status = await helperApi.getDownloadStatus(id);
-      
-      setDownloadState(prev => {
-        if (!prev || prev.id !== id) return prev;
-        return {
-          ...prev,
-          state: status.state,
-          progress: status.progress,
-          speed: status.speed,
-          eta: status.eta,
-          filename: status.filename,
-          filepath: status.filepath,
-          error: status.error,
-          errorType: status.errorType as any
-        };
+      if (active.length === 0) return currentDownloads;
+
+      // Poll each active download asynchronously
+      active.forEach(async (job) => {
+        try {
+          const status = await helperApi.getDownloadStatus(job.id);
+          const originalUrl = urlMapRef.current.get(job.id) || '';
+
+          setDownloads(prevList => {
+            return prevList.map(item => {
+              if (item.id !== job.id) return item;
+
+              const updated: DownloadProgress = {
+                ...item,
+                state: status.state,
+                progress: status.progress,
+                speed: status.speed,
+                eta: status.eta,
+                filename: status.filename,
+                filepath: status.filepath,
+                error: status.error,
+                errorType: status.errorType as any
+              };
+
+              // If newly transitioned to complete/error, record to history
+              if (['complete', 'error', 'cancelled'].includes(status.state) && !['complete', 'error', 'cancelled'].includes(item.state)) {
+                if (status.state === 'complete' && status.filename) {
+                  addEntry({
+                    id: job.id,
+                    url: originalUrl,
+                    filename: status.filename,
+                    filepath: status.filepath,
+                    timestamp: Date.now(),
+                    success: true
+                  });
+                } else if (status.state === 'error') {
+                  addEntry({
+                    id: job.id,
+                    url: originalUrl,
+                    filename: status.filename || 'Failed Download',
+                    timestamp: Date.now(),
+                    success: false
+                  });
+                }
+              }
+
+              return updated;
+            });
+          });
+        } catch (err) {
+          console.error(`Failed to poll status for ${job.id}:`, err);
+        }
       });
 
-      if (['complete', 'error', 'cancelled'].includes(status.state)) {
-        clearPolling();
-        
-        if (status.state === 'complete' && status.filename) {
-          addEntry({
-            id,
-            url: originalUrl,
-            filename: status.filename,
-            timestamp: Date.now(),
-            success: true
-          });
-        } else if (status.state === 'error') {
-          addEntry({
-            id,
-            url: originalUrl,
-            filename: 'Failed Download',
-            timestamp: Date.now(),
-            success: false
-          });
-        }
-      }
-    } catch (error) {
-      // Don't transition to error immediately on poll failure, might just be transient
-      console.error('Failed to poll status:', error);
-    }
+      return currentDownloads;
+    });
   }, []);
 
+  useEffect(() => {
+    pollingRef.current = setInterval(pollActiveDownloads, 1500);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [pollActiveDownloads]);
+
   const startDownload = async (url: string, formatType: string = 'video', quality: string = 'best') => {
+    setIsSubmitting(true);
+    const tempId = 'temp_' + Date.now();
+    
+    // Add placeholder in active downloads
+    const newJob: DownloadProgress = {
+      id: tempId,
+      state: 'validating',
+      progress: 0,
+      filename: 'Initializing download...'
+    };
+    
+    setDownloads(prev => [newJob, ...prev]);
+
     try {
-      setDownloadState({ id: 'pending', state: 'validating' });
       const downloadId = await helperApi.startDownload(url, formatType, quality);
-      
-      setDownloadState({ id: downloadId, state: 'connecting' });
-      
-      clearPolling();
-      pollingRef.current = setInterval(() => pollStatus(downloadId, url), 1500);
+      urlMapRef.current.set(downloadId, url);
+
+      setDownloads(prev => prev.map(d => d.id === tempId ? {
+        ...d,
+        id: downloadId,
+        state: 'connecting',
+        filename: 'Connecting to source...'
+      } : d));
       
     } catch (error: any) {
       if (error.message === 'UNAUTHORIZED') {
         localStorage.removeItem('insta_dl_token');
-        setDownloadState({ id: 'error', state: 'error', errorType: 'helper_offline', error: 'Authorization refreshed. Please click Try Again.' });
+        setDownloads(prev => prev.map(d => d.id === tempId ? {
+          ...d,
+          state: 'error',
+          errorType: 'helper_offline',
+          error: 'Authorization refreshed. Please click Try Again.'
+        } : d));
       } else {
-        setDownloadState({ id: 'error', state: 'error', errorType: 'network', error: error.message });
+        setDownloads(prev => prev.map(d => d.id === tempId ? {
+          ...d,
+          state: 'error',
+          errorType: 'network',
+          error: error.message || 'Failed to start download'
+        } : d));
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const cancelDownload = async () => {
-    if (downloadState && downloadState.id !== 'pending' && downloadState.id !== 'error') {
-      try {
-        await helperApi.cancelDownload(downloadState.id);
-        clearPolling();
-        setDownloadState(prev => prev ? { ...prev, state: 'cancelled' } : null);
-      } catch (error) {
-        console.error('Failed to cancel:', error);
-      }
+  const cancelDownload = async (id: string) => {
+    try {
+      await helperApi.cancelDownload(id);
+      setDownloads(prev => prev.map(d => d.id === id ? { ...d, state: 'cancelled' } : d));
+    } catch (e) {
+      console.error('Failed to cancel:', e);
     }
   };
 
-  const reset = () => {
-    clearPolling();
-    setDownloadState(null);
+  const dismissDownload = (id: string) => {
+    setDownloads(prev => prev.filter(d => d.id !== id));
   };
 
-  useEffect(() => {
-    return clearPolling;
-  }, []);
+  const clearCompleted = () => {
+    setDownloads(prev => prev.filter(d => !['complete', 'error', 'cancelled'].includes(d.state)));
+  };
 
-  return { downloadState, startDownload, cancelDownload, reset };
+  return { 
+    downloads, 
+    isSubmitting, 
+    startDownload, 
+    cancelDownload, 
+    dismissDownload, 
+    clearCompleted 
+  };
 }

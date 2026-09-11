@@ -17,7 +17,7 @@ class Config:
             'allowed_origins': ["http://localhost:5173", "http://127.0.0.1:5173"],
             'use_browser_cookies': False,
             'browser_for_cookies': "chrome",
-            'max_file_size_mb': 500,
+            'max_file_size_mb': 0,
             'auto_start': False
         }
         

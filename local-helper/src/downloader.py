@@ -153,7 +153,7 @@ class Downloader:
                 if os.path.exists(filepath):
                     size_mb = os.path.getsize(filepath) / (1024 * 1024)
                     max_mb = self.config.get('max_file_size_mb')
-                    if size_mb > max_mb:
+                    if max_mb and max_mb > 0 and size_mb > max_mb:
                         self.progress_store.update(download_id, state='error', error=f"File exceeds max size of {max_mb}MB", errorType='unknown')
                         os.remove(filepath)
                         return
