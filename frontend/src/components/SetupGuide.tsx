@@ -57,8 +57,8 @@ export function SetupGuide({ isOpen, onClose }: Props) {
                 </p>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <a 
-                    href="https://github.com/Akashbenniamin/InstaGrab/releases/latest/download/InstaGrab-Helper-Setup-1.0.0.exe" 
-                    download="InstaGrab-Helper-Setup-1.0.0.exe"
+                    href="https://github.com/Akashbenniamin/InstaGrab/releases/latest/download/InstaGrab-Helper-Setup.exe" 
+                    download="InstaGrab-Helper-Setup.exe"
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 insta-gradient text-white rounded-lg text-xs font-bold hover:opacity-95 transition-all shadow-xs"
                   >
                     <Download className="w-3.5 h-3.5" />

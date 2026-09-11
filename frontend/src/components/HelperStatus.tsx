@@ -125,8 +125,8 @@ export function HelperStatus({ status, onSetupClick, onPairClick }: Props) {
         <div className="flex flex-col sm:flex-row items-center gap-2">
           {/* Direct 1-Click Download for Windows (.exe) - Automatically starts download directly! */}
           <a 
-            href="https://github.com/Akashbenniamin/InstaGrab/releases/latest/download/InstaGrab-Helper-Setup-1.0.0.exe"
-            download="InstaGrab-Helper-Setup-1.0.0.exe"
+            href="https://github.com/Akashbenniamin/InstaGrab/releases/latest/download/InstaGrab-Helper-Setup.exe"
+            download="InstaGrab-Helper-Setup.exe"
             className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl insta-gradient text-white text-xs font-bold hover:opacity-95 shadow-sm transition-all cursor-pointer text-center"
             title="Direct 1-click download of the Windows installer without opening GitHub"
           >

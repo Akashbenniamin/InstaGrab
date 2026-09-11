@@ -5,6 +5,8 @@ import sys
 def build():
     PyInstaller.__main__.run([
         'src/main.py',
+        '--noconfirm',
+        '--clean',
         '--name=InstaGrab Helper',
         '--onedir',
         '--windowed',
@@ -13,7 +15,7 @@ def build():
         '--add-data=assets/icon.ico;assets',
         '--hidden-import=pystray',
         '--hidden-import=waitress',
-        '--hidden-import=Flask',
+        '--hidden-import=flask',
         '--hidden-import=flask_cors',
         '--hidden-import=yt_dlp',
         '--hidden-import=PIL',

@@ -103,7 +103,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.0.0',
+            'version': '1.0.2',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0

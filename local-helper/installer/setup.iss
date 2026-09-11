@@ -1,5 +1,5 @@
-#define MyAppName "InstaGrab Helper"
-#define MyAppVersion "1.0.0"
+#define MyAppName "InstaGrab Desktop Downloader"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "InstaGrab"
 #define MyAppExeName "InstaGrab Helper.exe"
 
@@ -11,7 +11,7 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={localappdata}\InstaGrabHelper
 DefaultGroupName={#MyAppName}
 OutputDir=..\dist
-OutputBaseFilename=InstaGrab-Helper-Setup-{#MyAppVersion}
+OutputBaseFilename=InstaGrab-Helper-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
