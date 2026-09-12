@@ -48,8 +48,15 @@ class Downloader:
 
     def update_ytdlp(self) -> tuple[bool, str]:
         import subprocess
+        si = None
+        creationflags = 0
+        if sys.platform == 'win32':
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0
+            creationflags = subprocess.CREATE_NO_WINDOW
         try:
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'], check=True, capture_output=True)
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'], startupinfo=si, creationflags=creationflags, check=True, capture_output=True)
             return True, "Updated successfully"
         except Exception as e:
             return False, str(e)
@@ -367,9 +374,17 @@ class Downloader:
             if os.path.exists(cand_ffmpeg):
                 ffmpeg_bin = cand_ffmpeg
 
+        si = None
+        creationflags = 0
+        if sys.platform == 'win32':
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+
         try:
             probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'json', filepath]
-            probe_res = subprocess.check_output(probe_cmd, timeout=15)
+            probe_res = subprocess.check_output(probe_cmd, startupinfo=si, creationflags=creationflags, timeout=15)
             data = json.loads(probe_res.decode('utf-8'))
             streams = data.get('streams', [])
             video_codecs = [s.get('codec_name', '').lower() for s in streams if s.get('codec_type') == 'video']
@@ -382,7 +397,7 @@ class Downloader:
                     '-c:a', 'copy',
                     temp_fixed
                 ]
-                subprocess.run(transcode_cmd, check=True, capture_output=True, timeout=300)
+                subprocess.run(transcode_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=300)
                 if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
                     os.replace(temp_fixed, filepath)
         except Exception:
