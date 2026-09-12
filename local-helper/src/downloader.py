@@ -393,8 +393,13 @@ class Downloader:
                 temp_fixed = filepath + '.compat.mp4'
                 transcode_cmd = [
                     ffmpeg_bin, '-y', '-i', filepath,
+                    '-vf', 'setpts=PTS-STARTPTS',
+                    '-af', 'asetpts=PTS-STARTPTS,aresample=async=1',
                     '-c:v', 'libx264', '-crf', '17', '-preset', 'fast', '-pix_fmt', 'yuv420p',
-                    '-c:a', 'copy',
+                    '-fps_mode', 'cfr', '-g', '60', '-keyint_min', '60', '-bf', '0',
+                    '-avoid_negative_ts', 'make_zero',
+                    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+                    '-movflags', '+faststart',
                     temp_fixed
                 ]
                 subprocess.run(transcode_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=300)
