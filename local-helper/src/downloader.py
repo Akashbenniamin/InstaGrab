@@ -46,6 +46,98 @@ class Downloader:
     def get_status(self, download_id: str) -> dict:
         return self.progress_store.get(download_id)
 
+    def extract_media_info(self, url: str) -> dict:
+        is_valid, err_msg, platform = validate_media_url(url)
+        if not is_valid:
+            return {'error': err_msg}
+
+        if platform == 'instagram':
+            match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+            if match:
+                shortcode = match.group(1)
+                content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
+                url = f"https://www.instagram.com/{content_type}/{shortcode}/"
+
+        ydl_opts = {
+            'skip_download': True,
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+        ffmpeg_dir = get_ffmpeg_dir()
+        if ffmpeg_dir:
+            ydl_opts['ffmpeg_location'] = ffmpeg_dir
+
+        if self.config.get('use_browser_cookies'):
+            browser = self.config.get('browser_for_cookies')
+            if browser:
+                ydl_opts['cookiesfrombrowser'] = (browser,)
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    return {'error': 'No metadata found'}
+
+                title = info.get('title') or ''
+                thumbnail = info.get('thumbnail') or ''
+                duration = info.get('duration') or 0
+                uploader = info.get('uploader') or info.get('channel') or ''
+                
+                # Check for direct playable video stream
+                playable_url = None
+                direct_url = info.get('url')
+                if direct_url and (direct_url.startswith('http') and not 'm3u8' in direct_url):
+                    playable_url = direct_url
+                else:
+                    formats = info.get('formats') or []
+                    for f in reversed(formats):
+                        if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url') and f.get('ext') == 'mp4':
+                            playable_url = f.get('url')
+                            break
+
+                return {
+                    'title': title,
+                    'thumbnail': thumbnail,
+                    'duration': duration,
+                    'uploader': uploader,
+                    'platform': platform,
+                    'playable_url': playable_url,
+                }
+        except Exception as e:
+            err_str = str(e)
+            # Pinterest fallback if no video found
+            if platform == 'pinterest' and 'pin' in url:
+                try:
+                    import urllib.request
+                    import json
+                    pin_match = re.search(r'/pin/(\d+)', url)
+                    if pin_match:
+                        pin_id = pin_match.group(1)
+                        api_url = f"https://www.pinterest.com/resource/PinResource/get/?data={{\"options\":{{\"id\":\"{pin_id}\",\"field_set_key\":\"detailed\"}}}}"
+                        req = urllib.request.Request(api_url, headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        })
+                        with urllib.request.urlopen(req, timeout=5) as resp:
+                            res_data = json.loads(resp.read().decode('utf-8'))
+                            pin_data = res_data.get('resource_response', {}).get('data', {})
+                            images = pin_data.get('images', {})
+                            orig = images.get('orig', {})
+                            img_url = orig.get('url') if orig else None
+                            if img_url:
+                                return {
+                                    'title': pin_data.get('title') or pin_data.get('grid_title') or f"Pinterest Pin {pin_id}",
+                                    'thumbnail': img_url,
+                                    'duration': 0,
+                                    'uploader': pin_data.get('pinner', {}).get('username') or 'Pinterest',
+                                    'platform': 'pinterest',
+                                    'playable_url': None
+                                }
+                except Exception:
+                    pass
+            return {'error': err_str}
+
     def update_ytdlp(self) -> tuple[bool, str]:
         import subprocess
         si = None

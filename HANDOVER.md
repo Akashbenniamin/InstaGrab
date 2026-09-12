@@ -27,6 +27,8 @@ The solution consists of three primary components:
   - `GET /api/health`: Health status and pairing verification.
   - `POST /api/download`: Triggers media extraction & download tasks.
   - `GET /api/progress/<id>`: Polling endpoint for real-time download percentage.
+  - `POST /api/info`: Extracts media metadata (`title`, `thumbnail`, `duration`, `uploader`, `playable_url`, `platform`) for live preview cards.
+  - `GET /api/file/download/<filename>`: Streams files directly to the browser for native browser downloads via blob download anchor.
   - `POST /api/open-file`: Reveals downloaded files in Windows File Explorer (`reveal_in_explorer`).
   - `POST /api/open-folder`: Opens the downloads directory.
 - `downloader.py`:
@@ -38,60 +40,54 @@ The solution consists of three primary components:
 
 ### B. Chrome Extension (`extension/`)
 - `manifest.json`: Manifest V3 specification.
-- `content.js`: Content script injecting download overlays into Instagram Reels, Pinterest pins, and YouTube Shorts.
-- `popup.js` / `popup.html`: Extension toolbar popup; auto-fills the active tab's URL and displays live download progress.
-- `background.js`: Service worker routing extension requests to `http://127.0.0.1:18765`.
+- `content.js` & `content.css`: Injects clean, theme-matched download buttons into Instagram Reels, Pinterest pins, and YouTube Shorts.
+- `popup.js` / `popup.html`: Extension toolbar popup featuring the universal media downloader mark, live download progress, and a 7-theme palette switcher.
+- Bundled into `frontend/public/instagrab-extension.zip` for instant user installation from the web app settings modal.
 
 ### C. Frontend Web App (`frontend/`)
-- Modern React application providing manual URL input, media preview, format selection (MP4 / MP3 / PNG), and live progress tracking.
+- Modern React application providing:
+  - **Universal Downloader Branding**: Sleek SVG brand mark replacing hardcoded Instagram rainbow gradients.
+  - **Browser Download Delivery**: Initiating a download saves locally and triggers a native browser download manager download matching the extension behavior.
+  - **Media Preview**: Live thumbnail display, title/uploader metadata, duration badge, and playable video / YouTube embed preview on the right side of the main action card.
+  - **Streamlined Layout**: Tightened vertical spacing; removed redundant labels ("Format", "Quality", "Best Quality Selected by default") and removed the bottom privacy notice.
+  - **Revamped Quick Mode**: Interactive switch tile adapting dynamically to the active theme palette.
+  - **Clutter-Free Settings Modal**: Fixed container height (`h-[520px] max-h-[88vh]`) preventing jarring layout shifts during tab switching; all promotional tip banners removed.
+  - **7 Tuned Themes**: High-contrast Creator Blue, Midnight Studio, Clean Light, Cyberpunk Neon, Sunset Amber, OLED Midnight, and Emerald Obsidian.
 
 ---
 
 ## 4. Summary of Recent Major Fixes & Critical Solutions
 
-### 1. Windows File Explorer "View" Button & Desktop Isolation
-- **The Problem**: Clicking "View" popped up a momentary terminal or left hidden background processes in Task Manager, without bringing Explorer to the foreground.
-- **Root Cause**: Windows Desktop Station Isolation. Subshells run in isolated sandbox desktops (`WinSta0\exebox-*`), and Python's `subprocess.Popen` ignores `lpDesktop`. Additionally, Windows Foreground Lock prevented background processes from stealing focus.
-- **The Solution** (in `server.py`):
-  - Used native Win32 `kernel32.CreateProcessW` with `STARTUPINFOW(lpDesktop='WinSta0\\Default', wShowWindow=SW_SHOWNORMAL)`.
-  - Added single-instance cleanup: enumerates existing `CabinetWClass` windows for `InstaGrab` and sends `WM_CLOSE` to avoid duplicate window clutter.
-  - Bypassed Windows Foreground Lock using `AttachThreadInput`, synthesized `VK_MENU` (Alt-key), `SetWindowPos(HWND_TOPMOST)`, and `SetForegroundWindow`.
-
-### 2. Video Codec Compatibility in Adobe After Effects (Audio-Only Bug)
-- **The Problem**: Videos like `Video by mamitha.media [1280p].mp4` imported into After Effects as audio-only.
-- **Root Cause**: Instagram served the high-res stream in **VP9 / AV1**. Adobe After Effects does not decode VP9 inside an MP4 container.
-- **The Solution** (in `downloader.py`):
-  - Prioritized `vcodec^=avc` in `yt-dlp` format selectors.
-  - Implemented `_ensure_h264_compatible` to automatically transcode VP9/AV1 to H.264.
-
-### 3. Adobe After Effects Playback Stutter & Timeline Jitter Bug
-- **The Problem**: Videos like `Video by dronolphy [1920p].mp4` played fine in VLC but jittered/stuttered wildly when scrubbed or previewed in After Effects.
-- **Root Cause**:
-  - `libx264` default used `b_pyramid=normal` with 3 B-frames and long GOP (~250 frames), causing out-of-order presentation and negative decode timestamps (`dts = -512, -256`). After Effects' importer fails to resolve B-pyramid hierarchies properly.
-  - Audio was copied as `HE-AAC` (High Efficiency AAC) with a negative start offset (`-0.114s`), introducing an edit list (`elst`) delay that broke audio/video clock synchronization in Adobe.
+### 1. Browser Download Integration
+- **The Problem**: Downloads previously only saved to the user's local disk folder, unlike the extension which also streamed files directly into the browser's download manager.
 - **The Solution**:
-  - Re-encoded with editing-optimized parameters:
-    ```bash
-    ffmpeg -y -i input.mp4 \
-      -vf "setpts=PTS-STARTPTS" \
-      -af "asetpts=PTS-STARTPTS,aresample=async=1" \
-      -c:v libx264 -crf 17 -preset fast -pix_fmt yuv420p \
-      -fps_mode cfr -g 60 -keyint_min 60 -bf 0 \
-      -avoid_negative_ts make_zero \
-      -c:a aac -b:a 192k -ar 48000 \
-      -movflags +faststart output.mp4
-    ```
-  - **`-bf 0`**: Guarantees strictly linear monotonic decoding (`PTS == DTS`). Zero frame reordering jitter.
-  - **`-fps_mode cfr`**: Strict Constant Frame Rate.
-  - **`-g 60`**: Short GOP (1s keyframes) for instant scrubbing.
-  - **`-c:a aac -ar 48000`**: Clean 48 kHz LC-AAC audio starting at `0.000000s`.
+  - Implemented `GET /api/file/download/<filename>` in `server.py` with sanitized path validation.
+  - Added `triggerBrowserDownload(filename)` in `helperApi.ts` and wired into `useDownload.ts` to automatically fetch the blob and trigger a browser download.
+  - Added instant browser download buttons to each entry in the download history drawer.
 
-### 4. Pinterest & Instagram URL Compatibility
-- **Pinterest Image Pins**: If a pin is an image (no video streams), the downloader automatically retrieves the highest-resolution image and saves it as an optimized `.png`.
-- **Instagram URLs**: Regex and canonicalization support all reel structures (`/reel/<id>`, `/reels/<id>`, `/<user>/reel/<id>`, `/share/reel/<id>`, etc.).
+### 2. Live Media Preview & Playback
+- **The Problem**: Users had no visual confirmation of the media before downloading.
+- **The Solution**:
+  - Implemented `extract_media_info(url)` in `downloader.py` and `POST /api/info` in `server.py`.
+  - Built `MediaPreview.tsx` with instant YouTube thumbnail extraction, interactive HTML5 video playback for direct media, and YouTube embed support.
 
-### 5. Console Window Suppression
-- Explicitly passed `subprocess.CREATE_NO_WINDOW` and `STARTUPINFO(wShowWindow=SW_HIDE)` to all FFmpeg/ffprobe invocations to ensure zero terminal flickers.
+### 3. Settings Modal Height Jumps & Clutter Removal
+- **The Problem**: Switching tabs caused the modal dialog height to expand and contract erratically; cluttered with intrusive tip callouts.
+- **The Solution**:
+  - Locked modal body to a fixed viewport-friendly height (`h-[520px] max-h-[88vh]`) with smooth vertical scroll.
+  - Removed all tip callout banners across all tabs.
+
+### 4. Accessibility & Theme Readability Overhaul
+- **The Problem**: On "Creators Blue", green status badges and buttons were illegible. Also, hardcoded Instagram rainbow gradients violated universal downloader identity.
+- **The Solution**:
+  - Replaced hardcoded gradients with theme CSS variables (`--status-active-bg`, `--status-active-text`, `--quick-mode-bg`, etc.).
+  - On Creators Blue, active status displays crisp deep blue (`#1e40af`) on soft blue (`#eff6ff`) with 100% WCAG AA contrast.
+
+### 5. Windows File Explorer "View" Button & Desktop Isolation
+- **The Solution**: Native Win32 `CreateProcessW` (`WinSta0\Default`) with single-instance window enumeration (`CabinetWClass`) and Windows Foreground Lock bypass (`AttachThreadInput` + `VK_MENU`).
+
+### 6. Adobe Premiere / After Effects Monotonic Playback
+- Strict H.264 CFR 60fps, `-bf 0` (zero B-frames for monotonic PTS == DTS), short GOP (`-g 60`), and normalized 48 kHz LC-AAC at `0.0s`.
 
 ---
 
@@ -102,9 +98,8 @@ The solution consists of three primary components:
 # From C:\Users\ADMIN\.gemini\antigravity\scratch\instagram-downloader\local-helper
 python build.py
 ```
-This produces `dist\InstaGrab Helper\`.
 
-### Deploying the Updated Executable:
+### Deploying the Helper Executable:
 ```powershell
 Stop-Process -Name "InstaGrab Helper" -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
@@ -112,16 +107,16 @@ Copy-Item -Path "C:\Users\ADMIN\.gemini\antigravity\scratch\instagram-downloader
 Start-Process -FilePath "$env:LOCALAPPDATA\InstaGrabHelper\InstaGrab Helper.exe" -ArgumentList "--minimized"
 ```
 
-### Verifying Service Health:
+### Building the Frontend:
 ```powershell
-curl.exe -s http://127.0.0.1:18765/api/health
-# Expected: {"downloadPath":"...","paired":true,"status":"ok","version":"1.0.9",...}
+# From C:\Users\ADMIN\.gemini\antigravity\scratch\instagram-downloader\frontend
+npm run build
 ```
 
 ---
 
-## 6. Current State & Pending Considerations
-- Helper executable is currently running live in the user session under `C:\Users\ADMIN\AppData\Local\InstaGrabHelper\InstaGrab Helper.exe`.
-- All downloads in `C:\Users\ADMIN\Downloads\InstaGrab` have been fixed and validated.
-- Any future video downloads will automatically receive NLE-optimized formatting.
-- Git repository is clean on the `main` branch.
+## 6. Current State & Verification
+- **Local Helper Executable**: Running live at `http://127.0.0.1:18765` (v1.0.9).
+- **Frontend**: Clean build, 0 TypeScript errors.
+- **Extension**: Re-bundled in `frontend/public/instagrab-extension.zip`.
+- **Git status**: Clean on `main`.

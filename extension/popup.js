@@ -10,9 +10,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   const qualitySelect = document.getElementById('quality-select');
 
   let currentFormat = 'video';
+  let currentTheme = 'creators';
+
+  // Apply Theme Function
+  function setTheme(th) {
+    currentTheme = th;
+    document.body.className = th;
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ pref_theme: th });
+    }
+  }
+
+  // Bind theme selector dots
+  document.querySelectorAll('.theme-dot').forEach(dotEl => {
+    dotEl.addEventListener('click', () => {
+      const th = dotEl.getAttribute('data-theme');
+      if (th) setTheme(th);
+    });
+  });
 
   const VIDEO_QUALITIES = [
-    { value: 'best', label: 'Best (Full HD)' },
+    { value: 'best', label: 'Best Quality' },
     { value: '1080p', label: '1080p FHD' },
     { value: '720p', label: '720p HD' },
     { value: '480p', label: '480p SD' }
@@ -39,7 +57,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load saved preferences
   if (chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['pref_format', 'pref_quality'], (res) => {
+    chrome.storage.local.get(['pref_format', 'pref_quality', 'pref_theme'], (res) => {
+      if (res.pref_theme) {
+        setTheme(res.pref_theme);
+      } else {
+        setTheme('creators');
+      }
+
       if (res.pref_format) {
         currentFormat = res.pref_format;
         if (currentFormat === 'audio') {
@@ -53,6 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateQualityOptions(currentFormat, res.pref_quality || 'best');
     });
   } else {
+    setTheme('creators');
     updateQualityOptions('video');
   }
 
@@ -89,8 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.runtime.sendMessage({ action: 'checkHealth' }, (res) => {
       if (res && res.ok) {
         dot.classList.add('connected');
-        statusText.textContent = 'Active (Port 18765)';
-        statusText.style.color = '#10b981';
+        statusText.textContent = 'Active (18765)';
       } else {
         dot.classList.remove('connected');
         statusText.textContent = 'Offline';
@@ -121,7 +145,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   downloadBtn.addEventListener('click', async () => {
     let url = urlInput.value.trim();
 
-    // If url bar is empty, query active tab URL
     if (!url && chrome.tabs && chrome.tabs.query) {
       const tabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
       const activeUrl = tabs && tabs[0] ? tabs[0].url : '';
@@ -187,4 +210,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     msgEl.style.background = isError ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)';
     msgEl.style.display = 'block';
   }
-});
+});\n

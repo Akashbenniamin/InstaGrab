@@ -9,110 +9,274 @@
       margin: 0;
       padding: 0;
     }
+
+    /* THEME SYSTEM (7 Fresh Optimized Themes) */
+    body.creators {
+      --bg-body: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-input: #f1f5f9;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --border-color: #e2e8f0;
+      --accent-color: #2563eb;
+      --btn-primary-bg: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      --btn-primary-text: #ffffff;
+      --btn-primary-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+      --status-bg: #eff6ff;
+      --status-text: #1d4ed8;
+      --status-border: #bfdbfe;
+    }
+
+    body.dark {
+      --bg-body: #0b0f19;
+      --bg-card: #131b2e;
+      --bg-input: #1a233b;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --border-color: #1e293b;
+      --accent-color: #38bdf8;
+      --btn-primary-bg: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+      --btn-primary-text: #041324;
+      --btn-primary-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+      --status-bg: rgba(56, 189, 248, 0.1);
+      --status-text: #7dd3fc;
+      --status-border: rgba(56, 189, 248, 0.25);
+    }
+
+    body.light {
+      --bg-body: #f9fafb;
+      --bg-card: #ffffff;
+      --bg-input: #f3f4f6;
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --border-color: #e5e7eb;
+      --accent-color: #4f46e5;
+      --btn-primary-bg: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+      --btn-primary-text: #ffffff;
+      --btn-primary-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
+      --status-bg: #eef2ff;
+      --status-text: #3730a3;
+      --status-border: #c7d2fe;
+    }
+
+    body.cyberpunk {
+      --bg-body: #070a14;
+      --bg-card: #0f1526;
+      --bg-input: #161e36;
+      --text-primary: #22d3ee;
+      --text-secondary: #94a3b8;
+      --border-color: #1e293b;
+      --accent-color: #06b6d4;
+      --btn-primary-bg: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
+      --btn-primary-text: #ffffff;
+      --btn-primary-shadow: 0 4px 14px rgba(6, 182, 212, 0.4);
+      --status-bg: rgba(6, 182, 212, 0.12);
+      --status-text: #67e8f9;
+      --status-border: rgba(6, 182, 212, 0.3);
+    }
+
+    body.sunset {
+      --bg-body: #140d12;
+      --bg-card: #20141d;
+      --bg-input: #2b1a27;
+      --text-primary: #ffedd5;
+      --text-secondary: #f472b6;
+      --border-color: #3d1a33;
+      --accent-color: #f43f5e;
+      --btn-primary-bg: linear-gradient(135deg, #f59e0b 0%, #f43f5e 100%);
+      --btn-primary-text: #ffffff;
+      --btn-primary-shadow: 0 4px 14px rgba(244, 63, 94, 0.4);
+      --status-bg: rgba(245, 158, 11, 0.12);
+      --status-text: #fcd34d;
+      --status-border: rgba(245, 158, 11, 0.3);
+    }
+
+    body.oled {
+      --bg-body: #000000;
+      --bg-card: #0d0d0d;
+      --bg-input: #171717;
+      --text-primary: #ffffff;
+      --text-secondary: #a1a1aa;
+      --border-color: #27272a;
+      --accent-color: #ffffff;
+      --btn-primary-bg: #ffffff;
+      --btn-primary-text: #000000;
+      --btn-primary-shadow: 0 4px 14px rgba(255, 255, 255, 0.2);
+      --status-bg: rgba(255, 255, 255, 0.08);
+      --status-text: #ffffff;
+      --status-border: rgba(255, 255, 255, 0.2);
+    }
+
+    body.emerald {
+      --bg-body: #060f0a;
+      --bg-card: #0d1a12;
+      --bg-input: #12241a;
+      --text-primary: #ecfdf5;
+      --text-secondary: #6ee7b7;
+      --border-color: #132e1f;
+      --accent-color: #10b981;
+      --btn-primary-bg: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      --btn-primary-text: #022c16;
+      --btn-primary-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+      --status-bg: rgba(16, 185, 129, 0.12);
+      --status-text: #a7f3d0;
+      --status-border: rgba(16, 185, 129, 0.28);
+    }
+
     body {
       width: 330px;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f1117;
-      color: #f3f4f6;
+      background: var(--bg-body, #0b0f19);
+      color: var(--text-primary, #f8fafc);
+      transition: background 0.2s, color 0.2s;
     }
+
     .header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
       margin-bottom: 14px;
     }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .logo {
       width: 32px;
       height: 32px;
       border-radius: 10px;
-      background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%);
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      box-shadow: var(--btn-primary-shadow);
     }
+
     .logo svg {
-      width: 18px;
-      height: 18px;
-      stroke: white;
+      width: 17px;
+      height: 17px;
+      stroke: currentColor;
       fill: none;
-      stroke-width: 2.5;
+      stroke-width: 2.4;
     }
+
     .title h1 {
       font-size: 15px;
-      font-weight: 700;
-      color: #ffffff;
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
     }
+
     .title p {
-      font-size: 11px;
-      color: #9ca3af;
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      font-weight: 500;
     }
-    .status-card {
-      padding: 9px 12px;
+
+    /* Theme switcher dot bar */
+    .theme-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 3px 5px;
       border-radius: 12px;
-      background: #1a1e29;
-      border: 1px solid #282f42;
+    }
+
+    .theme-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform 0.15s;
+    }
+
+    .theme-dot:hover {
+      transform: scale(1.25);
+    }
+
+    .status-card {
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: var(--status-bg);
+      border: 1px solid var(--status-border);
+      color: var(--status-text);
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
-      font-size: 11.5px;
+      font-size: 11px;
+      font-weight: 600;
     }
+
     .status-badge {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-weight: 600;
     }
+
     .dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: #ef4444;
     }
+
     .dot.connected {
-      background: #10b981;
-      box-shadow: 0 0 8px #10b981;
+      background: var(--accent-color);
+      box-shadow: 0 0 6px var(--accent-color);
     }
+
     .input-box {
       margin-bottom: 10px;
     }
+
     .input-box input {
       width: 100%;
-      padding: 10px 12px;
+      padding: 9px 12px;
       border-radius: 10px;
-      background: #161922;
-      border: 1px solid #2d3548;
-      color: #ffffff;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
       font-size: 12px;
       outline: none;
       transition: border-color 0.15s;
     }
+
     .input-box input:focus {
-      border-color: #E1306C;
+      border-color: var(--accent-color);
     }
-    /* Options row: Format pills & Quality dropdown */
+
     .options-row {
       display: flex;
       align-items: center;
       gap: 8px;
       margin-bottom: 12px;
     }
+
     .format-pills {
       display: flex;
-      background: #161922;
-      border: 1px solid #282f42;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
       border-radius: 9px;
       padding: 2px;
       flex: 1;
     }
+
     .format-pill {
       flex: 1;
       padding: 5px 0;
       border: none;
       background: transparent;
-      color: #9ca3af;
+      color: var(--text-secondary);
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
@@ -120,15 +284,17 @@
       transition: all 0.15s;
       text-align: center;
     }
+
     .format-pill.active {
-      background: #2a3144;
-      color: #ffffff;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      background: var(--bg-input);
+      color: var(--text-primary);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     }
+
     .quality-select {
-      background: #161922;
-      border: 1px solid #282f42;
-      color: #ffffff;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
       font-size: 11px;
       font-weight: 600;
       padding: 6px 10px;
@@ -137,16 +303,19 @@
       cursor: pointer;
       min-width: 95px;
     }
+
     .quality-select:focus {
-      border-color: #E1306C;
+      border-color: var(--accent-color);
     }
+
     .btn-grab {
       width: 100%;
       padding: 10px;
-      border-radius: 10px;
+      border-radius: 11px;
       border: none;
-      background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%);
-      color: white;
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+      box-shadow: var(--btn-primary-shadow);
       font-weight: 700;
       font-size: 12.5px;
       cursor: pointer;
@@ -156,25 +325,30 @@
       gap: 6px;
       transition: opacity 0.15s, transform 0.15s;
     }
+
     .btn-grab:hover {
-      opacity: 0.93;
+      opacity: 0.94;
       transform: translateY(-1px);
     }
+
     .btn-grab:active {
       transform: translateY(1px);
     }
+
     .btn-grab:disabled {
       opacity: 0.5;
       cursor: not-allowed;
       transform: none;
     }
+
     .btn-grab svg {
       width: 15px;
       height: 15px;
       stroke: currentColor;
-      stroke-width: 2.3;
+      stroke-width: 2.4;
       fill: none;
     }
+
     #msg {
       margin-top: 10px;
       font-size: 11px;
@@ -184,39 +358,55 @@
       padding: 6px 8px;
       border-radius: 8px;
     }
+
     .links {
       margin-top: 12px;
       display: flex;
       justify-content: center;
       gap: 12px;
     }
+
     .links a {
       font-size: 11px;
-      color: #E1306C;
+      color: var(--accent-color);
       text-decoration: none;
       font-weight: 600;
     }
+
     .links a:hover {
       text-decoration: underline;
     }
   </style>
 </head>
-<body>
+<body class="creators">
   <div class="header">
-    <div class="logo">
-      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    <div class="header-left">
+      <div class="logo">
+        <svg viewBox="0 0 24 24"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m8 17 4 4 4-4" /></svg>
+      </div>
+      <div class="title">
+        <h1>InstaGrab</h1>
+        <p>Universal Media Downloader</p>
+      </div>
     </div>
-    <div class="title">
-      <h1>InstaGrab</h1>
-      <p>Universal Media Downloader</p>
+
+    <!-- 7-Theme Quick Selector -->
+    <div class="theme-bar" title="Switch Theme">
+      <div class="theme-dot" data-theme="creators" style="background: #2563eb;" title="Creators Blue"></div>
+      <div class="theme-dot" data-theme="dark" style="background: #38bdf8;" title="Midnight Studio"></div>
+      <div class="theme-dot" data-theme="light" style="background: #4f46e5;" title="Minimal Light"></div>
+      <div class="theme-dot" data-theme="cyberpunk" style="background: #06b6d4;" title="Cyberpunk Neon"></div>
+      <div class="theme-dot" data-theme="sunset" style="background: #f43f5e;" title="Sunset Amber"></div>
+      <div class="theme-dot" data-theme="oled" style="background: #ffffff;" title="OLED Midnight"></div>
+      <div class="theme-dot" data-theme="emerald" style="background: #10b981;" title="Emerald Obsidian"></div>
     </div>
   </div>
 
   <div class="status-card">
-    <span style="color: #9ca3af;">Desktop Engine:</span>
+    <span style="opacity: 0.85;">Desktop Engine:</span>
     <div class="status-badge">
       <div id="dot" class="dot"></div>
-      <span id="status-text" style="color: #ef4444;">Offline</span>
+      <span id="status-text">Checking...</span>
     </div>
   </div>
 
@@ -231,7 +421,7 @@
       <button type="button" class="format-pill" id="btn-audio" data-format="audio">🎵 Audio</button>
     </div>
     <select id="quality-select" class="quality-select">
-      <option value="best">Best (Full HD)</option>
+      <option value="best">Best Quality</option>
       <option value="1080p">1080p</option>
       <option value="720p">720p</option>
       <option value="480p">480p</option>
@@ -239,7 +429,7 @@
   </div>
 
   <button id="download-btn" class="btn-grab">
-    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    <svg viewBox="0 0 24 24"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /><path d="M12 12v9" /><path d="m8 17 4 4 4-4" /></svg>
     <span id="btn-text">Download to Browser</span>
   </button>
 
@@ -251,4 +441,4 @@
 
   <script src="popup.js"></script>
 </body>
-</html>
+</html>\n

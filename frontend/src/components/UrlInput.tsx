@@ -61,26 +61,33 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
           onPaste={handleNativePaste}
           disabled={disabled}
           placeholder="Paste Instagram, YouTube, or Pinterest link..."
-          className={`w-full py-4 pl-12 pr-28 text-base sm:text-lg rounded-2xl bg-[var(--bg-main)] border ${error ? 'border-red-500' : 'border-[var(--border-color)]'} focus:outline-none focus:ring-2 focus:ring-insta-pink transition-all shadow-sm`}
+          className={`w-full py-3.5 pl-12 pr-28 text-base sm:text-lg rounded-2xl bg-[var(--bg-main)] border ${error ? 'border-red-500' : 'border-[var(--border-color)]'} focus:outline-none focus:border-[var(--accent-color)] transition-all shadow-xs`}
         />
         
         <div className="absolute right-3 flex items-center gap-1.5">
-          {/* Platform Badge when detected */}
+          {/* Platform Badge when detected - Harmonized with active theme */}
           {detection && detection.valid && (
-            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-gray-200/80 dark:bg-gray-800 text-[var(--text-primary)]">
+            <div 
+              style={{
+                background: 'var(--badge-bg)',
+                color: 'var(--badge-text)',
+                borderColor: 'var(--badge-border)'
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border shadow-2xs transition-colors"
+            >
               {detection.platform === 'instagram' ? (
                 <>
-                  <Camera className="w-3.5 h-3.5 text-pink-500" />
-                  <span className="capitalize">{detection.contentType || 'IG'}</span>
+                  <Camera className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)' }} />
+                  <span className="capitalize">{detection.contentType === 'reel' ? 'Reel' : (detection.contentType || 'Instagram')}</span>
                 </>
               ) : detection.platform === 'youtube' ? (
                 <>
-                  <Play className="w-3.5 h-3.5 text-red-500 fill-red-500" />
+                  <Play className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)', fill: 'var(--accent-color)' }} />
                   <span>{detection.contentType === 'shorts' ? 'Shorts' : 'YouTube'}</span>
                 </>
               ) : (
                 <>
-                  <Pin className="w-3.5 h-3.5 text-red-600 fill-red-600" />
+                  <Pin className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)' }} />
                   <span>Pinterest</span>
                 </>
               )}
@@ -92,7 +99,7 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
               type="button"
               onClick={() => onChange('')}
               disabled={disabled}
-              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
+              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors disabled:opacity-50 cursor-pointer"
               title="Clear input"
             >
               <X className="w-5 h-5" />
@@ -100,7 +107,7 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
           )}
         </div>
       </div>
-      {error && <p className="text-red-500 text-sm pl-2">{error}</p>}
+      {error && <p className="text-red-500 text-xs pl-2">{error}</p>}
     </div>
   );
 }

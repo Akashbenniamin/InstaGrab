@@ -1,21 +1,21 @@
 import { useState, useEffect } from 'react';
 
-export type Theme = 'system' | 'dark' | 'light' | 'creators' | 'cyberpunk' | 'sunset' | 'oled';
+export type Theme = 'system' | 'creators' | 'dark' | 'light' | 'cyberpunk' | 'sunset' | 'oled' | 'emerald';
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('insta_dl_theme') as Theme;
-    if (['system', 'dark', 'light', 'creators', 'cyberpunk', 'sunset', 'oled'].includes(saved)) {
+    if (['system', 'creators', 'dark', 'light', 'cyberpunk', 'sunset', 'oled', 'emerald'].includes(saved)) {
       return saved;
     }
-    return 'system';
+    return 'creators'; // Creators Blue default
   });
 
   useEffect(() => {
     localStorage.setItem('insta_dl_theme', theme);
 
     const applyTheme = () => {
-      const classesToRemove = ['dark', 'light', 'creators', 'cyberpunk', 'sunset', 'oled'];
+      const classesToRemove = ['dark', 'light', 'creators', 'cyberpunk', 'sunset', 'oled', 'emerald'];
       document.documentElement.classList.remove(...classesToRemove);
 
       const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;

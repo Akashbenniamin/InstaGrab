@@ -1,12 +1,5 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-insta-pink: #E1306C;
-  --color-insta-purple: #833AB4;
-  --color-insta-orange: #F56040;
-  --color-insta-yellow: #FCAF45;
-}
-
 @layer base {
   :root, html.light {
     --bg-main: #f9fafb;
@@ -15,91 +8,176 @@
     --text-secondary: #4b5563;
     --border-color: #e5e7eb;
     --overlay-bg: rgba(0, 0, 0, 0.5);
-    --btn-primary-bg: linear-gradient(to top right, #FCAF45, #E1306C, #833AB4);
+    --btn-primary-bg: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
     --btn-primary-text: #ffffff;
-    --btn-primary-shadow: 0 10px 25px -5px rgba(225, 48, 108, 0.4);
-    --accent-color: #E1306C;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.35);
+    --accent-color: #4f46e5;
+    --accent-hover: #4338ca;
+    --badge-bg: #eef2ff;
+    --badge-text: #4338ca;
+    --badge-border: #c7d2fe;
+    --status-active-bg: #eef2ff;
+    --status-active-border: #c7d2fe;
+    --status-active-text: #3730a3;
+    --status-active-dot: #4f46e5;
+    --quick-mode-bg: #eef2ff;
+    --quick-mode-border: #a5b4fc;
+    --quick-mode-text: #4338ca;
   }
 
-  html.dark {
-    --bg-main: #0a0a0a;
-    --bg-card: #1a1a1a;
-    --text-primary: #f3f4f6;
-    --text-secondary: #9ca3af;
-    --border-color: #374151;
-    --overlay-bg: rgba(0, 0, 0, 0.8);
-    --btn-primary-bg: linear-gradient(to top right, #FCAF45, #E1306C, #833AB4);
-    --btn-primary-text: #ffffff;
-    --btn-primary-shadow: 0 10px 25px -5px rgba(225, 48, 108, 0.4);
-    --accent-color: #E1306C;
-  }
-
-  /* Creators Bay / Modern Blue SaaS Theme */
+  /* Creators Blue / Modern SaaS Theme */
   html.creators {
     --bg-main: #f8fafc;
     --bg-card: #ffffff;
     --text-primary: #0f172a;
-    --text-secondary: #64748b;
+    --text-secondary: #475569;
     --border-color: #e2e8f0;
     --overlay-bg: rgba(15, 23, 42, 0.5);
     --btn-primary-bg: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
     --btn-primary-text: #ffffff;
-    --btn-primary-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.45);
-    --accent-color: #0284c7;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4);
+    --accent-color: #2563eb;
+    --accent-hover: #1d4ed8;
+    --badge-bg: #eff6ff;
+    --badge-text: #1d4ed8;
+    --badge-border: #bfdbfe;
+    --status-active-bg: #eff6ff;
+    --status-active-border: #bfdbfe;
+    --status-active-text: #1e40af;
+    --status-active-dot: #2563eb;
+    --quick-mode-bg: #eff6ff;
+    --quick-mode-border: #93c5fd;
+    --quick-mode-text: #1d4ed8;
   }
 
-  html.cyberpunk {
-    --bg-main: #080c18;
-    --bg-card: #0f172a;
-    --text-primary: #38bdf8;
+  /* Midnight Studio Dark Theme */
+  html.dark {
+    --bg-main: #0b0f19;
+    --bg-card: #131b2e;
+    --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --border-color: #1e293b;
-    --overlay-bg: rgba(8, 12, 24, 0.85);
+    --overlay-bg: rgba(0, 0, 0, 0.85);
+    --btn-primary-bg: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+    --btn-primary-text: #041324;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(56, 189, 248, 0.35);
+    --accent-color: #38bdf8;
+    --accent-hover: #0ea5e9;
+    --badge-bg: rgba(56, 189, 248, 0.12);
+    --badge-text: #38bdf8;
+    --badge-border: rgba(56, 189, 248, 0.25);
+    --status-active-bg: rgba(56, 189, 248, 0.1);
+    --status-active-border: rgba(56, 189, 248, 0.25);
+    --status-active-text: #7dd3fc;
+    --status-active-dot: #38bdf8;
+    --quick-mode-bg: rgba(56, 189, 248, 0.12);
+    --quick-mode-border: rgba(56, 189, 248, 0.3);
+    --quick-mode-text: #38bdf8;
+  }
+
+  /* Cyberpunk Neon */
+  html.cyberpunk {
+    --bg-main: #070a14;
+    --bg-card: #0f1526;
+    --text-primary: #22d3ee;
+    --text-secondary: #94a3b8;
+    --border-color: #1e293b;
+    --overlay-bg: rgba(7, 10, 20, 0.9);
     --btn-primary-bg: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
     --btn-primary-text: #ffffff;
-    --btn-primary-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.5);
-    --accent-color: #38bdf8;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.45);
+    --accent-color: #06b6d4;
+    --accent-hover: #0891b2;
+    --badge-bg: rgba(6, 182, 212, 0.14);
+    --badge-text: #22d3ee;
+    --badge-border: rgba(6, 182, 212, 0.35);
+    --status-active-bg: rgba(6, 182, 212, 0.12);
+    --status-active-border: rgba(6, 182, 212, 0.3);
+    --status-active-text: #67e8f9;
+    --status-active-dot: #06b6d4;
+    --quick-mode-bg: rgba(6, 182, 212, 0.15);
+    --quick-mode-border: rgba(6, 182, 212, 0.4);
+    --quick-mode-text: #22d3ee;
   }
 
+  /* Sunset Amber */
   html.sunset {
-    --bg-main: #160c18;
-    --bg-card: #241327;
-    --text-primary: #fed7aa;
+    --bg-main: #140d12;
+    --bg-card: #20141d;
+    --text-primary: #ffedd5;
     --text-secondary: #f472b6;
-    --border-color: #3f1b45;
-    --overlay-bg: rgba(22, 12, 24, 0.85);
-    --btn-primary-bg: linear-gradient(135deg, #f59e0b 0%, #f43f5e 50%, #be185d 100%);
+    --border-color: #3d1a33;
+    --overlay-bg: rgba(20, 13, 18, 0.9);
+    --btn-primary-bg: linear-gradient(135deg, #f59e0b 0%, #f43f5e 100%);
     --btn-primary-text: #ffffff;
-    --btn-primary-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.5);
+    --btn-primary-shadow: 0 10px 25px -5px rgba(244, 63, 94, 0.45);
     --accent-color: #f43f5e;
+    --accent-hover: #e11d48;
+    --badge-bg: rgba(244, 63, 94, 0.15);
+    --badge-text: #fda4af;
+    --badge-border: rgba(244, 63, 94, 0.3);
+    --status-active-bg: rgba(245, 158, 11, 0.12);
+    --status-active-border: rgba(245, 158, 11, 0.3);
+    --status-active-text: #fcd34d;
+    --status-active-dot: #f59e0b;
+    --quick-mode-bg: rgba(244, 63, 94, 0.15);
+    --quick-mode-border: rgba(244, 63, 94, 0.35);
+    --quick-mode-text: #fb7185;
   }
 
+  /* OLED Pure Black */
   html.oled {
     --bg-main: #000000;
-    --bg-card: #0a0a0a;
+    --bg-card: #0d0d0d;
     --text-primary: #ffffff;
-    --text-secondary: #888888;
-    --border-color: #222222;
+    --text-secondary: #a1a1aa;
+    --border-color: #27272a;
     --overlay-bg: rgba(0, 0, 0, 0.95);
     --btn-primary-bg: #ffffff;
     --btn-primary-text: #000000;
-    --btn-primary-shadow: 0 10px 25px -5px rgba(255, 255, 255, 0.25);
+    --btn-primary-shadow: 0 10px 25px -5px rgba(255, 255, 255, 0.2);
     --accent-color: #ffffff;
+    --accent-hover: #e4e4e7;
+    --badge-bg: rgba(255, 255, 255, 0.1);
+    --badge-text: #ffffff;
+    --badge-border: rgba(255, 255, 255, 0.25);
+    --status-active-bg: rgba(255, 255, 255, 0.08);
+    --status-active-border: rgba(255, 255, 255, 0.2);
+    --status-active-text: #ffffff;
+    --status-active-dot: #ffffff;
+    --quick-mode-bg: rgba(255, 255, 255, 0.12);
+    --quick-mode-border: rgba(255, 255, 255, 0.3);
+    --quick-mode-text: #ffffff;
+  }
+
+  /* Emerald Obsidian */
+  html.emerald {
+    --bg-main: #060f0a;
+    --bg-card: #0d1a12;
+    --text-primary: #ecfdf5;
+    --text-secondary: #6ee7b7;
+    --border-color: #132e1f;
+    --overlay-bg: rgba(6, 15, 10, 0.9);
+    --btn-primary-bg: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --btn-primary-text: #022c16;
+    --btn-primary-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.35);
+    --accent-color: #10b981;
+    --accent-hover: #059669;
+    --badge-bg: rgba(16, 185, 129, 0.14);
+    --badge-text: #6ee7b7;
+    --badge-border: rgba(16, 185, 129, 0.3);
+    --status-active-bg: rgba(16, 185, 129, 0.12);
+    --status-active-border: rgba(16, 185, 129, 0.28);
+    --status-active-text: #a7f3d0;
+    --status-active-dot: #10b981;
+    --quick-mode-bg: rgba(16, 185, 129, 0.14);
+    --quick-mode-border: rgba(16, 185, 129, 0.35);
+    --quick-mode-text: #6ee7b7;
   }
 
   body {
     @apply bg-[var(--bg-main)] text-[var(--text-primary)] transition-colors duration-300 antialiased min-h-screen;
   }
-}
-
-@utility insta-gradient {
-  background-image: linear-gradient(to top right, var(--color-insta-yellow), var(--color-insta-pink), var(--color-insta-purple));
-}
-
-@utility insta-text-gradient {
-  background-image: linear-gradient(to top right, var(--color-insta-yellow), var(--color-insta-pink), var(--color-insta-purple));
-  background-clip: text;
-  color: transparent;
 }
 
 /* Custom Scrollbar */

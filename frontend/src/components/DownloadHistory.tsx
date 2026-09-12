@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { HistoryEntry } from '../types';
-import { Clock, CheckCircle2, XCircle, Trash2, FolderOpen, AlertCircle } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, Trash2, FolderOpen, AlertCircle, Download } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 
 interface Props {
@@ -44,9 +44,15 @@ export function DownloadHistory({ history, onClear }: Props) {
       {/* Header */}
       <div className="p-4 sm:px-5 sm:py-4 border-b border-[var(--border-color)] flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/30">
         <div className="flex items-center space-x-2.5 font-bold text-sm text-[var(--text-primary)]">
-          <Clock className="w-4 h-4 text-insta-pink" />
+          <Clock className="w-4 h-4" style={{ color: 'var(--accent-color)' }} />
           <span>Recent Downloads</span>
-          <span className="bg-gray-200/70 dark:bg-gray-800 text-[11px] font-semibold py-0.5 px-2 rounded-full text-[var(--text-secondary)]">
+          <span 
+            style={{
+              background: 'var(--badge-bg)',
+              color: 'var(--badge-text)'
+            }}
+            className="text-[11px] font-bold py-0.5 px-2 rounded-full"
+          >
             {history.length}
           </span>
         </div>
@@ -94,7 +100,7 @@ export function DownloadHistory({ history, onClear }: Props) {
                     href={entry.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-semibold text-[var(--text-primary)] hover:text-insta-pink hover:underline truncate block cursor-pointer transition-colors"
+                    className="text-xs font-semibold text-[var(--text-primary)] hover:underline truncate block cursor-pointer transition-colors"
                     title={`Click to open source URL: ${entry.url}`}
                   >
                     {entry.filename || 'Untitled Download'}
@@ -105,15 +111,31 @@ export function DownloadHistory({ history, onClear }: Props) {
                 </div>
               </div>
 
-              {/* Right: View Button (opens in File Explorer) */}
-              <button 
-                onClick={() => handleView(entry)}
-                className="inline-flex items-center gap-1 text-xs font-bold text-insta-pink hover:text-insta-purple hover:underline flex-shrink-0 px-2.5 py-1 rounded-lg hover:bg-insta-pink/10 transition-colors cursor-pointer"
-                title="Open in Windows File Explorer"
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-                <span>View</span>
-              </button>
+              {/* Right: Actions (Browser Download + File Explorer) */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {entry.success && entry.filename && (
+                  <button
+                    type="button"
+                    onClick={() => helperApi.triggerBrowserDownload(entry.filename)}
+                    style={{ color: 'var(--accent-color)' }}
+                    className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Download to browser"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                <button 
+                  type="button"
+                  onClick={() => handleView(entry)}
+                  style={{ color: 'var(--accent-color)' }}
+                  className="inline-flex items-center gap-1 text-xs font-bold hover:underline px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  title="Open in Windows File Explorer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>View</span>
+                </button>
+              </div>
             </div>
           ))}
         </div>

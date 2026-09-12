@@ -251,6 +251,75 @@ class HelperApi {
       return null;
     }
   }
+
+  async triggerBrowserDownload(filename: string): Promise<boolean> {
+    try {
+      const token = localStorage.getItem('insta_dl_token') || '';
+      const streamUrl = `${this.baseUrl}/api/file/download/${encodeURIComponent(filename)}${token ? `?token=${token}` : ''}`;
+
+      // Primary: fetch as blob and trigger download via object URL (seamless browser download)
+      try {
+        const response = await fetch(streamUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            try {
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(blobUrl);
+            } catch {}
+          }, 10000);
+          return true;
+        }
+      } catch (blobErr) {
+        console.warn('Blob stream fallback:', blobErr);
+      }
+
+      // Secondary fallback: direct anchor click
+      const a = document.createElement('a');
+      a.href = streamUrl;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try { document.body.removeChild(a); } catch {}
+      }, 1000);
+      return true;
+    } catch (e) {
+      console.error('Failed to trigger browser download:', e);
+      return false;
+    }
+  }
+
+  async getMediaInfo(url: string): Promise<{
+    title?: string;
+    thumbnail?: string;
+    duration?: number;
+    uploader?: string;
+    platform?: string;
+    playable_url?: string | null;
+    error?: string;
+  } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/info`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ url })
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (e) {
+      console.warn('Failed to fetch media info:', e);
+      return null;
+    }
+  }
 }
 
 export const helperApi = new HelperApi();

@@ -14,7 +14,7 @@ import { ProgressDisplay } from './components/ProgressDisplay';
 import { HelperStatus as HelperStatusComponent } from './components/HelperStatus';
 import { SetupGuide } from './components/SetupGuide';
 import { DownloadHistory } from './components/DownloadHistory';
-import { PrivacyNotice } from './components/PrivacyNotice';
+import { MediaPreview } from './components/MediaPreview';
 import { MobileNotice } from './components/MobileNotice';
 import { SettingsModal } from './components/SettingsModal';
 
@@ -112,9 +112,9 @@ function App() {
           onOpenSettings={() => setIsSettingsOpen(true)} 
         />
         
-        <div className="mt-8 flex flex-col lg:flex-row gap-8 items-start">
-          {/* Left Column: Recent Downloads (Sticky on desktop, utilizing free empty space) */}
-          <aside className="w-full lg:w-80 lg:sticky lg:top-8 order-2 lg:order-1 flex-shrink-0">
+        <div className="mt-8 flex flex-col lg:flex-row gap-7 items-start">
+          {/* Left Column: Recent Downloads (Sticky on desktop) */}
+          <aside className="w-full lg:w-72 lg:sticky lg:top-8 order-2 lg:order-1 flex-shrink-0">
             <DownloadHistory 
               history={history}
               onClear={handleClearHistory}
@@ -122,11 +122,12 @@ function App() {
           </aside>
 
           {/* Right / Main Column: Downloader Card & Active Jobs Queue */}
-          <main className="flex-1 w-full max-w-2xl mx-auto order-1 lg:order-2 space-y-6">
+          <main className="flex-1 w-full max-w-3xl mx-auto order-1 lg:order-2 space-y-6">
             <MobileNotice isConnected={status.connected} />
             
-            <div className="bg-[var(--bg-card)] rounded-3xl p-4 sm:p-8 shadow-sm border border-[var(--border-color)]">
-              <div className="space-y-6">
+            <div className="bg-[var(--bg-card)] rounded-3xl p-4 sm:p-6 shadow-sm border border-[var(--border-color)]">
+              <div className="space-y-4">
+                {/* 1. URL Input Bar */}
                 <UrlInput 
                   value={url}
                   onChange={handleUrlChange}
@@ -136,53 +137,90 @@ function App() {
                   error={urlError}
                 />
 
-                <DownloadOptions
-                  formatType={formatType}
-                  onFormatChange={setFormatType}
-                  videoQuality={videoQuality}
-                  onVideoQualityChange={setVideoQuality}
-                  audioQuality={audioQuality}
-                  onAudioQualityChange={setAudioQuality}
-                  disabled={isSubmitting}
-                />
-                
-                <div className="space-y-2">
-                  <DownloadButton 
-                    onClick={() => handleDownload()}
-                    disabled={!url || !!urlError}
-                    loading={isSubmitting}
-                    formatType={formatType}
-                  />
+                {/* 2. Responsive 2-Column: Controls (Left) + Media Preview (Right) */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch pt-1">
+                  {/* Left Column: Format, Quality, Download Button, Revamped Quick Mode */}
+                  <div className="md:col-span-7 flex flex-col justify-between space-y-3">
+                    <DownloadOptions
+                      formatType={formatType}
+                      onFormatChange={setFormatType}
+                      videoQuality={videoQuality}
+                      onVideoQualityChange={setVideoQuality}
+                      audioQuality={audioQuality}
+                      onAudioQualityChange={setAudioQuality}
+                      disabled={isSubmitting}
+                    />
 
-                  {/* Quick Mode Toggle */}
-                  <div className="flex items-center justify-between px-1">
-                    <button
-                      type="button"
-                      onClick={toggleQuickMode}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer border ${
-                        quickMode
-                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 shadow-xs'
-                          : 'bg-transparent border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                      title="When active, pasting a link automatically starts the download immediately"
-                    >
-                      <Zap className={`w-3.5 h-3.5 ${quickMode ? 'fill-amber-500 text-amber-500' : 'text-gray-400'}`} />
-                      <span>Quick Mode: {quickMode ? 'ON' : 'OFF'}</span>
-                    </button>
+                    <div className="space-y-2 pt-1">
+                      <DownloadButton 
+                        onClick={() => handleDownload()}
+                        disabled={!url || !!urlError}
+                        loading={isSubmitting}
+                        formatType={formatType}
+                      />
 
-                    {quickMode && (
-                      <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1 animate-in fade-in">
-                        ⚡ Auto-downloads on paste
-                      </span>
-                    )}
+                      {/* Revamped Quick Mode Switch Tile */}
+                      <button
+                        type="button"
+                        onClick={toggleQuickMode}
+                        style={quickMode ? {
+                          background: 'var(--quick-mode-bg)',
+                          borderColor: 'var(--quick-mode-border)',
+                          color: 'var(--quick-mode-text)'
+                        } : undefined}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+                          quickMode
+                            ? 'shadow-2xs font-semibold'
+                            : 'bg-[var(--bg-main)] border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-gray-400'
+                        }`}
+                        title="When active, pasting a valid link automatically starts the download immediately"
+                      >
+                        <div className="flex items-center gap-2 text-xs">
+                          <div 
+                            style={quickMode ? {
+                              background: 'var(--accent-color)',
+                              color: '#ffffff'
+                            } : undefined}
+                            className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${
+                              quickMode ? '' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'
+                            }`}
+                          >
+                            <Zap className="w-3 h-3 fill-current" />
+                          </div>
+                          <span>Quick Mode: Auto-download</span>
+                        </div>
+
+                        {/* Smooth Toggle Switch Indicator */}
+                        <div 
+                          style={quickMode ? { background: 'var(--accent-color)' } : undefined}
+                          className={`w-8 h-4.5 rounded-full p-0.5 transition-colors relative flex items-center ${
+                            quickMode ? '' : 'bg-gray-300 dark:bg-gray-700'
+                          }`}
+                        >
+                          <div 
+                            className={`w-3.5 h-3.5 rounded-full bg-white shadow-xs transition-transform transform ${
+                              quickMode ? 'translate-x-3.5' : 'translate-x-0'
+                            }`}
+                          />
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live Thumbnail & Media Preview */}
+                  <div className="md:col-span-5 flex flex-col">
+                    <MediaPreview url={url} />
                   </div>
                 </div>
 
-                <HelperStatusComponent 
-                  status={status}
-                  onSetupClick={() => setIsSetupOpen(true)}
-                  onPairClick={() => pair('auto')}
-                />
+                {/* 3. Engine Status Banner */}
+                <div className="pt-1">
+                  <HelperStatusComponent 
+                    status={status}
+                    onSetupClick={() => setIsSetupOpen(true)}
+                    onPairClick={() => pair('auto')}
+                  />
+                </div>
               </div>
             </div>
 
@@ -194,11 +232,8 @@ function App() {
               onClearCompleted={clearCompleted}
               onRetry={(item) => {
                 dismissDownload(item.id);
-                // If the user had a failed download, auto-refill or retry
               }}
             />
-
-            <PrivacyNotice />
           </main>
         </div>
       </div>

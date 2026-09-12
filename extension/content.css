@@ -198,7 +198,7 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   height: 36px !important;
   padding: 0 16px !important;
   border-radius: 18px !important;
-  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
   color: #ffffff !important;
   font-family: Roboto, Arial, sans-serif !important;
   font-size: 14px !important;
@@ -315,7 +315,7 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   width: 36px !important;
   height: 36px !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  background: #0095f6 !important;
   color: #ffffff !important;
   border: none !important;
   cursor: pointer !important;
@@ -360,7 +360,7 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   width: 44px !important;
   height: 44px !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, #FCAF45 0%, #E1306C 50%, #833AB4 100%) !important;
+  background: #0095f6 !important;
   color: #ffffff !important;
   border: none !important;
   cursor: pointer !important;
@@ -451,7 +451,7 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   justify-content: center !important;
   width: 20px !important;
   height: 20px !important;
-  color: #E1306C !important;
+  color: #0284c7 !important;
   flex-shrink: 0 !important;
 }
 
@@ -501,7 +501,7 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
 .instagrab-toast-bar-fill {
   height: 100% !important;
   width: 0%;
-  background: linear-gradient(90deg, #E1306C, #FCAF45) !important;
+  background: linear-gradient(90deg, #0284c7, #2563eb) !important;
   border-radius: 9999px !important;
   transition: width 0.25s ease-out !important;
 }

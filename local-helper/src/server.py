@@ -115,7 +115,7 @@ def create_app(config, downloader, token_manager):
     @app.after_request
     def cors_middleware(response):
         origin = request.headers.get('Origin')
-        if is_origin_allowed(origin) or (request.path in ('/api/health', '/api/open-file') and origin):
+        if is_origin_allowed(origin) or ((request.path in ('/api/health', '/api/open-file') or request.path.startswith('/api/file/download/')) and origin):
             response.headers['Access-Control-Allow-Origin'] = origin
         
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
@@ -211,6 +211,17 @@ def create_app(config, downloader, token_manager):
             return '', 204
         cancelled = downloader.cancel_download(download_id)
         return jsonify({'cancelled': cancelled})
+
+    @app.route('/api/info', methods=['POST', 'OPTIONS'])
+    def media_info():
+        if request.method == 'OPTIONS':
+            return '', 204
+        data = request.json or {}
+        url = data.get('url')
+        if not url:
+            return jsonify({'error': 'URL required'}), 400
+        info = downloader.extract_media_info(url)
+        return jsonify(info)
 
     @app.route('/api/config', methods=['GET', 'POST', 'OPTIONS'])
     def manage_config():

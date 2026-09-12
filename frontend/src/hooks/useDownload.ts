@@ -54,6 +54,9 @@ export function useDownload() {
                     success: true
                   });
 
+                  // Stream file directly to browser download manager (same as extension)
+                  helperApi.triggerBrowserDownload(status.filename);
+
                   // Automatically remove finished task from bottom section after 3.5 seconds
                   setTimeout(() => {
                     setDownloads(current => current.filter(d => d.id !== job.id));
