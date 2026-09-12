@@ -1,3 +1,5 @@
+import json
+import subprocess
 import yt_dlp
 import threading
 import os
@@ -170,19 +172,45 @@ class Downloader:
                 'preferredquality': audio_bitrate,
             }]
         else:
-            # Video (MP4)
+            # Video (MP4) - Prioritize H.264 (AVC) video and AAC (m4a) audio for 100% compatibility with editing software (After Effects, Premiere Pro, etc.)
             ydl_opts['merge_output_format'] = 'mp4'
+            ydl_opts['format_sort'] = ['vcodec:h264', 'acodec:m4a', 'res', 'fps']
             if quality == '1080p':
-                ydl_opts['format'] = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+                ydl_opts['format'] = (
+                    'bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
+                    'bestvideo[height<=1080][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+                )
             elif quality == '720p':
-                ydl_opts['format'] = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+                ydl_opts['format'] = (
+                    'bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
+                    'bestvideo[height<=720][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+                )
             elif quality == '480p':
-                ydl_opts['format'] = 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+                ydl_opts['format'] = (
+                    'bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
+                    'bestvideo[height<=480][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+                )
             elif quality == '360p':
-                ydl_opts['format'] = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]/best'
+                ydl_opts['format'] = (
+                    'bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
+                    'bestvideo[height<=360][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo[height<=360]+bestaudio/best[height<=360]/best'
+                )
             else:
-                # 'best' (Highest Quality available)
-                ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
+                # 'best' (Highest Quality available with H.264 preference)
+                ydl_opts['format'] = (
+                    'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/'
+                    'bestvideo[vcodec^=avc]+bestaudio/'
+                    'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo+bestaudio/best'
+                )
 
         if self.config.get('use_browser_cookies'):
             browser = self.config.get('browser_for_cookies')
@@ -203,6 +231,10 @@ class Downloader:
                         filepath = mp3_filepath
 
                 if os.path.exists(filepath):
+                    # Ensure H.264 compatibility for video formats if source only had VP9/AV1
+                    if format_type != 'audio' and filepath.lower().endswith('.mp4'):
+                        filepath = self._ensure_h264_compatible(filepath, ffmpeg_dir)
+
                     size_mb = os.path.getsize(filepath) / (1024 * 1024)
                     max_mb = self.config.get('max_file_size_mb')
                     if max_mb and max_mb > 0 and size_mb > max_mb:
@@ -319,4 +351,42 @@ class Downloader:
             filename=target_filename,
             filepath=target_path
         )
+
+    def _ensure_h264_compatible(self, filepath: str, ffmpeg_dir: str = None) -> str:
+        """Verifies the output video uses H.264/AVC. If only VP9/AV1 was available, transcodes to H.264 for After Effects & Premiere Pro compatibility."""
+        if not filepath or not os.path.exists(filepath) or not filepath.lower().endswith('.mp4'):
+            return filepath
+
+        ffprobe_bin = 'ffprobe'
+        ffmpeg_bin = 'ffmpeg'
+        if ffmpeg_dir:
+            cand_probe = os.path.join(ffmpeg_dir, 'ffprobe.exe')
+            cand_ffmpeg = os.path.join(ffmpeg_dir, 'ffmpeg.exe')
+            if os.path.exists(cand_probe):
+                ffprobe_bin = cand_probe
+            if os.path.exists(cand_ffmpeg):
+                ffmpeg_bin = cand_ffmpeg
+
+        try:
+            probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'json', filepath]
+            probe_res = subprocess.check_output(probe_cmd, timeout=15)
+            data = json.loads(probe_res.decode('utf-8'))
+            streams = data.get('streams', [])
+            video_codecs = [s.get('codec_name', '').lower() for s in streams if s.get('codec_type') == 'video']
+
+            if any(vc in ('vp9', 'vp8', 'av1', 'av01') for vc in video_codecs):
+                temp_fixed = filepath + '.compat.mp4'
+                transcode_cmd = [
+                    ffmpeg_bin, '-y', '-i', filepath,
+                    '-c:v', 'libx264', '-crf', '17', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'copy',
+                    temp_fixed
+                ]
+                subprocess.run(transcode_cmd, check=True, capture_output=True, timeout=300)
+                if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
+                    os.replace(temp_fixed, filepath)
+        except Exception:
+            pass
+
+        return filepath
 
