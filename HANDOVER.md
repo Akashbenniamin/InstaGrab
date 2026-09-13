@@ -89,6 +89,14 @@ The solution consists of three primary components:
 ### 6. Adobe Premiere / After Effects Monotonic Playback
 - Strict H.264 CFR 60fps, `-bf 0` (zero B-frames for monotonic PTS == DTS), short GOP (`-g 60`), and normalized 48 kHz LC-AAC at `0.0s`.
 
+### 7. Windows File Lock [WinError 32] Resolution (Adobe After Effects / NLEs)
+- **The Problem**: When footage had been imported into Adobe After Effects or Premiere Pro (or opened in a player), re-downloading or updating caused `[WinError 32] The process cannot access the file because it is being used by another process`.
+- **Root Cause**: Windows places a mandatory read lock (`FILE_SHARE_READ`) on active footage files, preventing in-place overwrites.
+- **The Solution** (in `downloader.py`):
+  - All download streams, audio extraction, and ffmpeg muxing now execute entirely inside an isolated per-job temp directory (`.tmp/<download_id>/`).
+  - Destination file accessibility is checked via non-blocking write verification (`open(target_path, 'r+b')`).
+  - If the file is locked by an NLE or media player, the engine automatically resolves to the next collision-free numbered filename: `Title [1280p] (1).mp4`, `Title [1280p] (2).mp4`, etc., guaranteeing 100% download success without disrupting active editing sessions.
+
 ---
 
 ## 5. Build & Deployment Instructions
