@@ -233,11 +233,11 @@ class Downloader:
         else:
             tmpl = '%(title)s%(height& [{}p]|)s.%(ext)s'
 
-        outtmpl = os.path.join(base_path, tmpl)
+        outtmpl = os.path.join(job_temp_dir, tmpl)
         
         ydl_opts = {
             'paths': {
-                'home': base_path,
+                'home': job_temp_dir,
                 'temp': job_temp_dir
             },
             'outtmpl': outtmpl,
@@ -329,6 +329,12 @@ class Downloader:
                     if os.path.exists(mp3_filepath):
                         filepath = mp3_filepath
 
+                if not os.path.exists(filepath):
+                    # Check candidates inside job_temp_dir if filename differed
+                    candidates = [os.path.join(job_temp_dir, f) for f in os.listdir(job_temp_dir) if not f.endswith('.part') and not f.endswith('.ytdl') and not f.startswith('.')]
+                    if candidates:
+                        filepath = max(candidates, key=os.path.getsize)
+
                 if os.path.exists(filepath):
                     # Ensure H.264 compatibility for video formats if source only had VP9/AV1
                     if format_type != 'audio' and filepath.lower().endswith('.mp4'):
@@ -338,10 +344,55 @@ class Downloader:
                     max_mb = self.config.get('max_file_size_mb')
                     if max_mb and max_mb > 0 and size_mb > max_mb:
                         self.progress_store.update(download_id, state='error', error=f"File exceeds max size of {max_mb}MB", errorType='unknown')
-                        os.remove(filepath)
+                        try:
+                            os.remove(filepath)
+                        except Exception:
+                            pass
                         return
 
-                self.progress_store.update(download_id, state='complete', progress=100.0, filepath=filepath, filename=os.path.basename(filepath))
+                    # Safely resolve target filename in base_path to avoid WinError 32 (file lock by After Effects, Premiere, Media Player)
+                    desired_filename = os.path.basename(filepath)
+                    target_path = os.path.join(base_path, desired_filename)
+                    target_filename = desired_filename
+
+                    if os.path.exists(target_path):
+                        is_writable = False
+                        try:
+                            with open(target_path, 'r+b'):
+                                is_writable = True
+                        except (PermissionError, OSError):
+                            is_writable = False
+
+                        if not is_writable:
+                            # File is locked by an external process (e.g. Adobe After Effects, Premiere Pro, VLC)
+                            # Generate a unique non-conflicting filename: "Title [1280p] (1).mp4", etc.
+                            base_name, ext = os.path.splitext(desired_filename)
+                            counter = 1
+                            while True:
+                                cand_name = f"{base_name} ({counter}){ext}"
+                                cand_path = os.path.join(base_path, cand_name)
+                                if not os.path.exists(cand_path):
+                                    target_path = cand_path
+                                    target_filename = cand_name
+                                    break
+                                try:
+                                    with open(cand_path, 'r+b'):
+                                        target_path = cand_path
+                                        target_filename = cand_name
+                                        break
+                                except (PermissionError, OSError):
+                                    counter += 1
+
+                    # Safely move completed media from private temp dir to destination
+                    import shutil
+                    if os.path.exists(target_path):
+                        try:
+                            os.remove(target_path)
+                        except Exception:
+                            pass
+                    shutil.move(filepath, target_path)
+
+                    self.progress_store.update(download_id, state='complete', progress=100.0, filepath=target_path, filename=target_filename)
         except Exception as e:
             err_str = str(e)
             # Check if this is a Pinterest image pin where yt-dlp finds no video formats
@@ -496,7 +547,15 @@ class Downloader:
                 ]
                 subprocess.run(transcode_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=300)
                 if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
-                    os.replace(temp_fixed, filepath)
+                    try:
+                        os.replace(temp_fixed, filepath)
+                    except Exception:
+                        import shutil
+                        try:
+                            os.remove(filepath)
+                            shutil.move(temp_fixed, filepath)
+                        except Exception:
+                            filepath = temp_fixed
         except Exception:
             pass
 
