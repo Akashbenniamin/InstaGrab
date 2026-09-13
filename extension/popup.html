@@ -148,86 +148,93 @@
     .logo {
       width: 32px;
       height: 32px;
-      border-radius: 10px;
+      border-radius: 9px;
       background: var(--btn-primary-bg);
-      color: var(--btn-primary-text);
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
       box-shadow: var(--btn-primary-shadow);
+      flex-shrink: 0;
     }
 
     .logo svg {
-      width: 17px;
-      height: 17px;
-      stroke: currentColor;
+      width: 18px;
+      height: 18px;
+      stroke: var(--btn-primary-text);
+      stroke-width: 2.2;
       fill: none;
-      stroke-width: 2.4;
     }
 
     .title h1 {
       font-size: 15px;
       font-weight: 800;
-      color: var(--text-primary);
       letter-spacing: -0.3px;
+      line-height: 1.1;
+      color: var(--text-primary);
     }
 
     .title p {
-      font-size: 10.5px;
+      font-size: 10px;
       color: var(--text-secondary);
       font-weight: 500;
+      letter-spacing: 0.1px;
     }
 
-    /* Theme switcher dot bar */
+    /* 7-Theme Switcher Dots */
     .theme-bar {
       display: flex;
       align-items: center;
-      gap: 4px;
-      background: var(--bg-card);
+      gap: 5px;
+      padding: 3px 6px;
+      background: var(--bg-input);
+      border-radius: 999px;
       border: 1px solid var(--border-color);
-      padding: 3px 5px;
-      border-radius: 12px;
     }
 
     .theme-dot {
-      width: 10px;
-      height: 10px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
       cursor: pointer;
-      border: 1px solid transparent;
       transition: transform 0.15s;
     }
 
     .theme-dot:hover {
-      transform: scale(1.25);
+      transform: scale(1.35);
     }
 
     .status-card {
-      padding: 8px 12px;
-      border-radius: 12px;
-      background: var(--status-bg);
-      border: 1px solid var(--status-border);
-      color: var(--status-text);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 7px 11px;
       margin-bottom: 12px;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 11.5px;
+      font-weight: 500;
     }
 
     .status-badge {
       display: flex;
       align-items: center;
       gap: 6px;
+      background: var(--status-bg);
+      color: var(--status-text);
+      border: 1px solid var(--status-border);
+      padding: 2.5px 8px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 600;
     }
 
     .dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: #ef4444;
+      transition: background 0.2s;
     }
 
     .dot.connected {
@@ -235,24 +242,43 @@
       box-shadow: 0 0 6px var(--accent-color);
     }
 
+    .detected-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--accent-color);
+      background: var(--status-bg);
+      border: 1px solid var(--status-border);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .input-box {
       margin-bottom: 10px;
+      position: relative;
     }
 
     .input-box input {
       width: 100%;
-      padding: 9px 12px;
-      border-radius: 10px;
-      background: var(--bg-input);
+      padding: 8.5px 12px;
+      border-radius: 9px;
       border: 1px solid var(--border-color);
+      background: var(--bg-input);
       color: var(--text-primary);
-      font-size: 12px;
+      font-size: 11.5px;
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
     .input-box input:focus {
       border-color: var(--accent-color);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
     }
 
     .options-row {
@@ -264,37 +290,40 @@
 
     .format-pills {
       display: flex;
-      background: var(--bg-card);
+      background: var(--bg-input);
       border: 1px solid var(--border-color);
       border-radius: 9px;
-      padding: 2px;
+      padding: 2.5px;
       flex: 1;
     }
 
     .format-pill {
       flex: 1;
-      padding: 5px 0;
       border: none;
       background: transparent;
       color: var(--text-secondary);
       font-size: 11px;
       font-weight: 600;
-      cursor: pointer;
+      padding: 5px 0;
       border-radius: 7px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
       transition: all 0.15s;
-      text-align: center;
     }
 
     .format-pill.active {
-      background: var(--bg-input);
+      background: var(--bg-card);
       color: var(--text-primary);
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
     }
 
     .quality-select {
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
+      background: var(--bg-input);
       color: var(--text-primary);
+      border: 1px solid var(--border-color);
       font-size: 11px;
       font-weight: 600;
       padding: 6px 10px;
@@ -336,7 +365,7 @@
     }
 
     .btn-grab:disabled {
-      opacity: 0.5;
+      opacity: 0.55;
       cursor: not-allowed;
       transform: none;
     }
@@ -347,6 +376,53 @@
       stroke: currentColor;
       stroke-width: 2.4;
       fill: none;
+    }
+
+    /* Live Progress Card */
+    .progress-box {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      display: none;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: var(--bg-input);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--btn-primary-bg);
+      transition: width 0.25s ease;
+      border-radius: 999px;
+    }
+
+    .progress-detail {
+      font-size: 10px;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     #msg {
@@ -410,6 +486,8 @@
     </div>
   </div>
 
+  <div id="detected-pill" class="detected-pill" style="display: none;"></div>
+
   <div class="input-box">
     <input type="text" id="url-input" placeholder="Paste link (Instagram, YouTube, Pinterest)..." />
   </div>
@@ -433,6 +511,21 @@
     <span id="btn-text">Download to Browser</span>
   </button>
 
+  <!-- Live In-Popup Progress Bar -->
+  <div id="progress-box" class="progress-box">
+    <div class="progress-header">
+      <span id="prog-state">Downloading...</span>
+      <span id="prog-pct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div id="prog-fill" class="progress-fill"></div>
+    </div>
+    <div class="progress-detail">
+      <span id="prog-speed">Connecting to engine...</span>
+      <span id="prog-eta"></span>
+    </div>
+  </div>
+
   <div id="msg"></div>
 
   <div class="links">
@@ -441,4 +534,4 @@
 
   <script src="popup.js"></script>
 </body>
-</html>\n
+</html>

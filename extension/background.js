@@ -1,6 +1,7 @@
 // InstaGrab - Background Service Worker (Manifest V3)
 const HELPER_BASE = 'http://127.0.0.1:18765';
 let cachedToken = null;
+let currentDownload = null; // { downloadId, state, progress, speed, eta, filename, error }
 
 // Auto-pair with Desktop Engine
 async function getAuthToken() {
@@ -35,6 +36,12 @@ async function checkHealth() {
   }
 }
 
+// Sanitize filename for Chrome download API
+function sanitizeFilename(name) {
+  if (!name) return 'media_download.mp4';
+  return name.replace(/[<>:"/\\|?*]/g, '_').trim();
+}
+
 // Helper: Trigger native browser download
 function triggerBrowserDownload(fileUrl, filename) {
   return new Promise((resolve) => {
@@ -45,7 +52,7 @@ function triggerBrowserDownload(fileUrl, filename) {
     chrome.downloads.download(
       {
         url: fileUrl,
-        filename: filename,
+        filename: sanitizeFilename(filename),
         conflictAction: 'uniquify',
         saveAs: false
       },
@@ -81,21 +88,99 @@ function normalizeMediaUrl(rawUrl) {
   return rawUrl;
 }
 
-// Trigger download via Desktop Engine, broadcast live progress to tab, then pipe to Browser Download Manager
-async function downloadMedia(url, formatType, quality, tabId = null) {
-  url = normalizeMediaUrl(url);
+// Helper to broadcast progress to both active tab and popup runtime
+function broadcastProgress(data, tabId) {
+  if (tabId) {
+    chrome.tabs.sendMessage(tabId, { action: 'downloadProgress', ...data }).catch(() => {});
+  }
+  chrome.runtime.sendMessage({ action: 'downloadProgress', ...data }).catch(() => {});
+}
 
-  // Respect saved extension preferences if not explicitly set
-  if (!formatType || !quality) {
-    const prefs = await new Promise(r => chrome.storage.local.get(['pref_format', 'pref_quality'], r));
-    formatType = formatType || prefs.pref_format || 'video';
-    quality = quality || prefs.pref_quality || 'best';
+// Background poller that continues running regardless of whether popup is open
+async function pollDownloadStatus(downloadId, token, tabId) {
+  const startTime = Date.now();
+  let completedFilename = null;
+
+  while (Date.now() - startTime < 300000) { // 5 minute timeout for large files
+    await new Promise(r => setTimeout(r, 650));
+
+    try {
+      const sResp = await fetch(`${HELPER_BASE}/api/download/${downloadId}/status`, {
+        headers: {
+          'X-Requested-With': 'InstaGrab',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (sResp.ok) {
+        const status = await sResp.json();
+        
+        currentDownload = {
+          downloadId,
+          state: status.state,
+          progress: status.progress || 0,
+          speed: status.speed || '',
+          eta: status.eta || '',
+          filename: status.filename || ''
+        };
+
+        broadcastProgress(currentDownload, tabId);
+
+        if (status.state === 'complete') {
+          completedFilename = status.filename;
+          break;
+        } else if (status.state === 'error') {
+          currentDownload = {
+            downloadId,
+            state: 'error',
+            error: status.error || 'Download failed during processing'
+          };
+          broadcastProgress(currentDownload, tabId);
+          setTimeout(() => {
+            if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
+          }, 8000);
+          return;
+        }
+      }
+    } catch (pollErr) {
+      console.warn('[InstaGrab] Status poll error:', pollErr);
+    }
   }
 
+  // Hand-off completed file to native Chrome / Browser Download Manager
+  if (completedFilename) {
+    const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(completedFilename)}?token=${token}`;
+    await triggerBrowserDownload(streamUrl, completedFilename);
+
+    currentDownload = {
+      downloadId,
+      state: 'complete',
+      progress: 100,
+      filename: completedFilename
+    };
+
+    broadcastProgress(currentDownload, tabId);
+
+    setTimeout(() => {
+      if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
+    }, 10000);
+  }
+}
+
+// Asynchronous start download job with immediate handshake
+async function startDownload(url, formatType, quality, tabId = null) {
+  url = normalizeMediaUrl(url);
+
+  // Fallback to active tab ID if triggered from popup
   if (!tabId && chrome.tabs && chrome.tabs.query) {
     try {
-      const activeTabs = await new Promise(r => chrome.tabs.query({ active: true, currentWindow: true }, r));
-      if (activeTabs && activeTabs[0]) tabId = activeTabs[0].id;
+      const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (activeTabs && activeTabs[0]) {
+        tabId = activeTabs[0].id;
+      } else {
+        const anyTabs = await chrome.tabs.query({ active: true });
+        if (anyTabs && anyTabs[0]) tabId = anyTabs[0].id;
+      }
     } catch {}
   }
 
@@ -157,75 +242,22 @@ async function downloadMedia(url, formatType, quality, tabId = null) {
 
     const { downloadId } = await resp.json();
 
-    // 2. Poll for live status & broadcast progress updates to the active tab
-    const startTime = Date.now();
-    let completedFilename = null;
+    currentDownload = {
+      downloadId,
+      state: 'extracting',
+      progress: 0,
+      speed: '',
+      eta: '',
+      filename: ''
+    };
 
-    while (Date.now() - startTime < 300000) { // 5 minute timeout for large 4K files
-      await new Promise(r => setTimeout(r, 650));
+    // Broadcast starting state immediately
+    broadcastProgress(currentDownload, tabId);
 
-      try {
-        const sResp = await fetch(`${HELPER_BASE}/api/download/${downloadId}/status`, {
-          headers: {
-            'X-Requested-With': 'InstaGrab',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (sResp.ok) {
-          const status = await sResp.json();
+    // Launch background status poller without awaiting so caller receives immediate ack
+    pollDownloadStatus(downloadId, token, tabId);
 
-          // Broadcast real-time progress to the calling tab
-          if (tabId) {
-            chrome.tabs.sendMessage(tabId, {
-              action: 'downloadProgress',
-              downloadId,
-              state: status.state,
-              progress: status.progress || 0,
-              speed: status.speed || '',
-              eta: status.eta || '',
-              filename: status.filename || ''
-            }).catch(() => {});
-          }
-
-          if (status.state === 'complete') {
-            completedFilename = status.filename;
-            break;
-          } else if (status.state === 'error') {
-            if (tabId) {
-              chrome.tabs.sendMessage(tabId, {
-                action: 'downloadProgress',
-                downloadId,
-                state: 'error',
-                error: status.error || 'Download failed during processing'
-              }).catch(() => {});
-            }
-            return { success: false, error: status.error || 'Download failed during extraction' };
-          }
-        }
-      } catch (pollErr) {
-        console.warn('[InstaGrab] Status poll error:', pollErr);
-      }
-    }
-
-    // 3. Hand-off completed file to native Chrome / Browser Download Manager
-    if (completedFilename) {
-      const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(completedFilename)}?token=${token}`;
-      await triggerBrowserDownload(streamUrl, completedFilename);
-
-      if (tabId) {
-        chrome.tabs.sendMessage(tabId, {
-          action: 'downloadProgress',
-          downloadId,
-          state: 'complete',
-          progress: 100,
-          filename: completedFilename
-        }).catch(() => {});
-      }
-
-      return { success: true, filename: completedFilename, browserDownload: true };
-    }
-
-    return { success: true, background: true };
+    return { success: true, downloadId };
 
   } catch (err) {
     return { 
@@ -242,9 +274,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     checkHealth().then(sendResponse);
     return true;
   }
+  if (request.action === 'getActiveDownload') {
+    sendResponse(currentDownload);
+    return true;
+  }
   if (request.action === 'download') {
     const tabId = sender.tab ? sender.tab.id : null;
-    downloadMedia(request.url, request.format_type, request.quality, tabId).then(sendResponse);
+    startDownload(request.url, request.format_type, request.quality, tabId).then(sendResponse);
     return true;
   }
 });

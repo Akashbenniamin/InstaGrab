@@ -97,9 +97,99 @@
     clearTimeout(activeToastTimeout);
   }
 
-  // Listen for live download progress broadcast from background service worker
+  // Detect currently active/playing media on the webpage
+  function detectActiveMediaOnPage() {
+    const host = window.location.hostname.toLowerCase();
+    const path = window.location.pathname;
+
+    // 1. YouTube
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      if (path === '/watch' || path.startsWith('/shorts/')) {
+        return { url: window.location.href, platform: 'youtube' };
+      }
+      const activeShort = document.querySelector('ytd-reel-video-renderer[is-active]');
+      if (activeShort) {
+        const link = activeShort.querySelector('a[href*="/shorts/"]');
+        if (link && link.href) return { url: link.href, platform: 'youtube' };
+      }
+    }
+
+    // 2. Pinterest
+    if (host.includes('pinterest.')) {
+      const pinMatch = path.match(/\/pin\/(\d+)/i);
+      if (pinMatch) {
+        return { url: `https://www.pinterest.com/pin/${pinMatch[1]}/`, platform: 'pinterest' };
+      }
+      const closeupLink = document.querySelector('[data-test-id="closeup-stage"] a[href*="/pin/"], div[role="dialog"] a[href*="/pin/"]');
+      if (closeupLink && closeupLink.href) {
+        const m = closeupLink.href.match(/\/pin\/(\d+)/i);
+        if (m) return { url: `https://www.pinterest.com/pin/${m[1]}/`, platform: 'pinterest' };
+      }
+    }
+
+    // 3. Instagram
+    if (host.includes('instagram.com')) {
+      // Direct post/reel URL
+      const directMatch = path.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+      if (directMatch) {
+        const type = path.includes('reel') ? 'reel' : (path.includes('tv') ? 'tv' : 'p');
+        return { url: `https://www.instagram.com/${type}/${directMatch[1]}/`, platform: 'instagram' };
+      }
+
+      // Check open modal/dialog
+      const dialog = document.querySelector('div[role="dialog"]');
+      if (dialog) {
+        const link = dialog.querySelector('a[href*="/reel/"], a[href*="/p/"]');
+        if (link) {
+          const href = link.getAttribute('href');
+          if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram' };
+        }
+      }
+
+      // Check active playing video or video closest to screen center
+      const videos = Array.from(document.querySelectorAll('video'));
+      let targetVideo = videos.find(v => !v.paused && v.offsetWidth > 120);
+      if (!targetVideo && videos.length > 0) {
+        const vh = window.innerHeight;
+        let minDiff = Infinity;
+        videos.forEach(v => {
+          const rect = v.getBoundingClientRect();
+          if (rect.height > 100 && rect.bottom > 0 && rect.top < vh) {
+            const diff = Math.abs((rect.top + rect.bottom) / 2 - vh / 2);
+            if (diff < minDiff) {
+              minDiff = diff;
+              targetVideo = v;
+            }
+          }
+        });
+      }
+
+      if (targetVideo) {
+        const container = targetVideo.closest('article') || targetVideo.closest('div[role="dialog"]') || targetVideo.closest('section') || targetVideo.parentElement?.parentElement?.parentElement;
+        if (container) {
+          const link = container.querySelector('a[href*="/reel/"], a[href*="/p/"]');
+          if (link) {
+            const href = link.getAttribute('href');
+            if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram' };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  let currentActiveButton = null;
+  let currentActiveButtonOriginal = '';
+
+  // Listen for messages from popup and background service worker
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener((msg) => {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (msg && msg.action === 'detectCurrentMedia') {
+        const detected = detectActiveMediaOnPage();
+        sendResponse(detected);
+        return true;
+      }
       if (msg && msg.action === 'downloadProgress') {
         updateToast({
           state: msg.state,
@@ -109,6 +199,27 @@
           message: msg.filename ? msg.filename : (msg.state === 'processing' ? 'Processing media...' : 'Downloading...'),
           isError: msg.state === 'error'
         });
+
+        if (currentActiveButton) {
+          if (msg.state === 'complete') {
+            currentActiveButton.classList.remove('instagrab-loading');
+            currentActiveButton.classList.add('instagrab-success');
+            currentActiveButton.innerHTML = currentActiveButtonOriginal.includes('<span')
+              ? `${CHECK_ICON} <span>Downloaded ✓</span>`
+              : `${CHECK_ICON}`;
+            const btnRef = currentActiveButton;
+            const orig = currentActiveButtonOriginal;
+            setTimeout(() => {
+              btnRef.classList.remove('instagrab-success');
+              btnRef.innerHTML = orig;
+            }, 3500);
+            currentActiveButton = null;
+          } else if (msg.state === 'error') {
+            currentActiveButton.classList.remove('instagrab-loading');
+            currentActiveButton.innerHTML = currentActiveButtonOriginal;
+            currentActiveButton = null;
+          }
+        }
       }
     });
   }
@@ -153,29 +264,20 @@
     if (button && button.classList.contains('instagrab-loading')) return;
     url = normalizeMediaUrl(url);
 
-    let originalContent = '';
     if (button) {
-      originalContent = button.innerHTML;
+      currentActiveButton = button;
+      currentActiveButtonOriginal = button.innerHTML;
       button.classList.add('instagrab-loading');
-      button.innerHTML = originalContent.includes('<span') 
+      button.innerHTML = currentActiveButtonOriginal.includes('<span') 
         ? `${SPINNER_ICON} <span>Starting...</span>` 
         : `${SPINNER_ICON}`;
     }
 
-    const resetBtn = (success = false) => {
-      if (!button) return;
-      button.classList.remove('instagrab-loading');
-      if (success) {
-        button.classList.add('instagrab-success');
-        button.innerHTML = originalContent.includes('<span') 
-          ? `${CHECK_ICON} <span>Downloaded ✓</span>` 
-          : `${CHECK_ICON}`;
-        setTimeout(() => {
-          button.classList.remove('instagrab-success');
-          button.innerHTML = originalContent;
-        }, 3500);
-      } else {
-        button.innerHTML = originalContent;
+    const resetBtn = () => {
+      if (currentActiveButton) {
+        currentActiveButton.classList.remove('instagrab-loading');
+        currentActiveButton.innerHTML = currentActiveButtonOriginal;
+        currentActiveButton = null;
       }
     };
 
@@ -199,7 +301,7 @@
           },
           (response) => {
             if (chrome.runtime.lastError || !response) {
-              resetBtn(false);
+              resetBtn();
               updateToast({
                 message: '⚠️ Desktop Engine is offline. Please launch InstaGrab on your PC!',
                 isError: true
@@ -208,20 +310,19 @@
             }
 
             if (response.success) {
-              resetBtn(true);
               updateToast({
-                message: '✓ Download complete! Saving to your browser downloads...',
-                progress: 100,
-                state: 'complete'
+                message: `Downloading ${formatLabel}...`,
+                progress: 10,
+                state: 'starting'
               });
             } else if (response.offline) {
-              resetBtn(false);
+              resetBtn();
               updateToast({
                 message: '⚠️ Desktop Engine is offline. Please launch InstaGrab on your PC!',
                 isError: true
               });
             } else {
-              resetBtn(false);
+              resetBtn();
               updateToast({
                 message: '❌ ' + (response.error || 'Download failed'),
                 isError: true
@@ -230,14 +331,14 @@
           }
         );
       } else {
-        resetBtn(false);
+        resetBtn();
         updateToast({
           message: '⚠️ Extension context error. Please reload the page.',
           isError: true
         });
       }
     } catch (err) {
-      resetBtn(false);
+      resetBtn();
       updateToast({
         message: '⚠️ Could not trigger download. Ensure InstaGrab is running.',
         isError: true
