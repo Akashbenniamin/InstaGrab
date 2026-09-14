@@ -268,6 +268,139 @@ async function startDownload(url, formatType, quality, tabId = null) {
   }
 }
 
+// Extract a clean PNG filename from an image URL
+function extractPngFilename(srcUrl) {
+  try {
+    const urlObj = new URL(srcUrl);
+    let pathname = urlObj.pathname;
+    let rawName = pathname.split('/').pop() || 'image';
+    rawName = decodeURIComponent(rawName).split('?')[0];
+    const baseName = rawName.replace(/\.[a-zA-Z0-9]+$/, '') || 'image';
+    const cleanName = baseName.replace(/[^a-zA-Z0-9_\-\s]/g, '_').trim() || 'image';
+    return `${cleanName}.png`;
+  } catch {
+    return `image_${Date.now()}.png`;
+  }
+}
+
+// Convert any image URL (WEBP, AVIF, JPG, SVG, etc.) to pure PNG Data URL in Service Worker
+async function convertImageToPngDataUrl(imageUrl) {
+  const resp = await fetch(imageUrl);
+  if (!resp.ok) throw new Error('Failed to fetch image: ' + resp.status);
+  const blob = await resp.blob();
+  const bitmap = await createImageBitmap(blob);
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0);
+  const pngBlob = await canvas.convertToBlob({ type: 'image/png' });
+  const buffer = await pngBlob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return 'data:image/png;base64,' + btoa(binary);
+}
+
+// Handle Right-Click "Save Image as PNG"
+async function handleSaveImageAsPng(srcUrl, tab) {
+  const tabId = tab ? tab.id : null;
+  const filename = extractPngFilename(srcUrl);
+
+  if (tabId) {
+    chrome.tabs.sendMessage(tabId, {
+      action: 'downloadProgress',
+      state: 'downloading',
+      progress: 25,
+      speed: 'Converting to PNG',
+      filename: filename
+    }).catch(() => {});
+  }
+
+  // 1. Try delegating to content script first (can use in-memory rendered DOM <img> without network re-fetch)
+  if (tabId) {
+    try {
+      const result = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'convertImageToPng', srcUrl }, (res) => {
+          if (chrome.runtime.lastError || !res || !res.dataUrl) {
+            resolve(null);
+          } else {
+            resolve(res);
+          }
+        });
+      });
+
+      if (result && result.dataUrl) {
+        await triggerBrowserDownload(result.dataUrl, filename);
+        chrome.tabs.sendMessage(tabId, {
+          action: 'downloadProgress',
+          state: 'complete',
+          progress: 100,
+          filename: filename
+        }).catch(() => {});
+        return;
+      }
+    } catch (tabErr) {
+      console.warn('[InstaGrab] Tab image conversion fallback to background:', tabErr);
+    }
+  }
+
+  // 2. Fallback: Convert via Service Worker OffscreenCanvas
+  try {
+    const dataUrl = await convertImageToPngDataUrl(srcUrl);
+    await triggerBrowserDownload(dataUrl, filename);
+
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'downloadProgress',
+        state: 'complete',
+        progress: 100,
+        filename: filename
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[InstaGrab] Failed to convert image to PNG:', err);
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'downloadProgress',
+        state: 'error',
+        error: 'Failed to convert image to PNG'
+      }).catch(() => {});
+    }
+  }
+}
+
+// Register Context Menu on Install & Startup
+function setupContextMenu() {
+  if (chrome.contextMenus && chrome.contextMenus.create) {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: 'instagrab-save-as-png',
+        title: 'Save Image as PNG (InstaGrab)',
+        contexts: ['image']
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('[InstaGrab] Context menu setup:', chrome.runtime.lastError.message);
+        }
+      });
+    });
+  }
+}
+
+chrome.runtime.onInstalled.addListener(setupContextMenu);
+chrome.runtime.onStartup.addListener(setupContextMenu);
+setupContextMenu();
+
+// Context Menu Click Listener
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'instagrab-save-as-png' && info.srcUrl) {
+      handleSaveImageAsPng(info.srcUrl, tab);
+    }
+  });
+}
+
 // Message Listener for Content Scripts & Popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'checkHealth') {

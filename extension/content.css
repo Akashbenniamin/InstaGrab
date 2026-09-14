@@ -514,4 +514,50 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   background: #ef4444 !important;
 }
 
+/* Toast Sponsor Banner Ad */
+.instagrab-toast-ad {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  margin-top: 6px !important;
+  padding-top: 6px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  font-size: 10.5px !important;
+}
+
+.instagrab-ad-badge {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #94a3b8 !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  flex-shrink: 0 !important;
+}
+
+.instagrab-ad-text {
+  color: #cbd5e1 !important;
+  font-weight: 500 !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.instagrab-ad-link {
+  color: #38bdf8 !important;
+  text-decoration: none !important;
+  font-weight: 600 !important;
+  flex-shrink: 0 !important;
+  transition: opacity 0.15s !important;
+}
+
+.instagrab-ad-link:hover {
+  text-decoration: underline !important;
+  opacity: 0.85 !important;
+}
+
 

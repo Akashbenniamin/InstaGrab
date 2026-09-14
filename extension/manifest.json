@@ -1,31 +1,18 @@
 {
   "manifest_version": 3,
   "name": "InstaGrab - 1-Click Media Downloader",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Download Instagram, YouTube, and Pinterest media directly to your browser via InstaGrab.",
   "permissions": [
     "storage",
     "downloads",
     "activeTab",
     "tabs",
-    "clipboardRead"
+    "clipboardRead",
+    "contextMenus"
   ],
   "host_permissions": [
-    "*://*.pinterest.com/*",
-    "*://pinterest.com/*",
-    "*://*.pinterest.ca/*",
-    "*://*.pinterest.co.uk/*",
-    "*://*.pinterest.de/*",
-    "*://*.pinterest.fr/*",
-    "*://*.pinterest.es/*",
-    "*://*.pinterest.it/*",
-    "*://*.pinterest.jp/*",
-    "*://*.pinterest.com.au/*",
-    "*://*.youtube.com/*",
-    "*://youtube.com/*",
-    "*://youtu.be/*",
-    "*://*.instagram.com/*",
-    "*://instagram.com/*",
+    "<all_urls>",
     "http://127.0.0.1:18765/*",
     "http://localhost:18765/*"
   ],

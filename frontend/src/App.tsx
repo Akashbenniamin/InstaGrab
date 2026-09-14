@@ -17,6 +17,7 @@ import { DownloadHistory } from './components/DownloadHistory';
 import { MediaPreview } from './components/MediaPreview';
 import { MobileNotice } from './components/MobileNotice';
 import { SettingsModal } from './components/SettingsModal';
+import { BannerAd } from './components/BannerAd';
 
 import { Zap } from 'lucide-react';
 
@@ -111,8 +112,11 @@ function App() {
           toggleTheme={toggleTheme} 
           onOpenSettings={() => setIsSettingsOpen(true)} 
         />
+
+        {/* Top Header Leaderboard Ad Banner */}
+        <BannerAd format="leaderboard" className="mt-1 mb-2" />
         
-        <div className="mt-8 flex flex-col lg:flex-row gap-7 items-start">
+        <div className="mt-4 flex flex-col lg:flex-row gap-7 items-start">
           {/* Left Column: Recent Downloads (Sticky on desktop) */}
           <aside className="w-full lg:w-72 lg:sticky lg:top-8 order-2 lg:order-1 flex-shrink-0">
             <DownloadHistory 
@@ -234,6 +238,9 @@ function App() {
                 dismissDownload(item.id);
               }}
             />
+
+            {/* Bottom Leaderboard Ad Banner */}
+            <BannerAd format="leaderboard" className="pt-2" />
           </main>
         </div>
       </div>

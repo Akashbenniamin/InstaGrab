@@ -27,6 +27,11 @@
         <div class="instagrab-toast-bar-track">
           <div class="instagrab-toast-bar-fill"></div>
         </div>
+        <div class="instagrab-toast-ad">
+          <span class="instagrab-ad-badge">Ad</span>
+          <span class="instagrab-ad-text">Fast &amp; Private 4K Video Downloader</span>
+          <a href="https://instagrab.app" target="_blank" rel="noopener noreferrer" class="instagrab-ad-link">InstaGrab Pro</a>
+        </div>
       `;
       document.body.appendChild(toast);
     }
@@ -188,6 +193,50 @@
       if (msg && msg.action === 'detectCurrentMedia') {
         const detected = detectActiveMediaOnPage();
         sendResponse(detected);
+        return true;
+      }
+      if (msg && msg.action === 'convertImageToPng') {
+        const srcUrl = msg.srcUrl;
+        (async () => {
+          try {
+            const imgs = Array.from(document.querySelectorAll('img'));
+            const matchingImg = imgs.find(img => img.src === srcUrl || img.currentSrc === srcUrl);
+            if (matchingImg && matchingImg.naturalWidth && matchingImg.complete) {
+              const canvas = document.createElement('canvas');
+              canvas.width = matchingImg.naturalWidth;
+              canvas.height = matchingImg.naturalHeight;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(matchingImg, 0, 0);
+              const dataUrl = canvas.toDataURL('image/png');
+              if (dataUrl && dataUrl.startsWith('data:image/png')) {
+                sendResponse({ dataUrl });
+                return;
+              }
+            }
+          } catch (e) {}
+
+          try {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const dataUrl = canvas.toDataURL('image/png');
+                sendResponse({ dataUrl });
+              } catch (err) {
+                sendResponse(null);
+              }
+            };
+            img.onerror = () => sendResponse(null);
+            img.src = srcUrl;
+          } catch (err) {
+            sendResponse(null);
+          }
+        })();
         return true;
       }
       if (msg && msg.action === 'downloadProgress') {

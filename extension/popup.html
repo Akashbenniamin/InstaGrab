@@ -452,6 +452,91 @@
     .links a:hover {
       text-decoration: underline;
     }
+
+    /* Banner Ad in Extension Popup */
+    .popup-banner-ad {
+      margin-top: 12px;
+      padding: 7px 9px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 9px;
+      position: relative;
+    }
+
+    .popup-banner-ad .ad-tag {
+      font-size: 8px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      opacity: 0.7;
+      letter-spacing: 0.6px;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+
+    .popup-banner-ad .ad-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .popup-banner-ad .ad-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: var(--status-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .popup-banner-ad .ad-icon svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--accent-color);
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .popup-banner-ad .ad-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .popup-banner-ad .ad-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--text-primary);
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .popup-banner-ad .ad-desc {
+      font-size: 9.5px;
+      color: var(--text-secondary);
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .popup-banner-ad .ad-cta {
+      padding: 3px 8px;
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 6px;
+      text-decoration: none;
+      flex-shrink: 0;
+      transition: opacity 0.15s;
+    }
+
+    .popup-banner-ad .ad-cta:hover {
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body class="creators">
@@ -527,6 +612,21 @@
   </div>
 
   <div id="msg"></div>
+
+  <!-- Extension Banner Ad -->
+  <div class="popup-banner-ad">
+    <div class="ad-tag">ADVERTISEMENT</div>
+    <div class="ad-content">
+      <div class="ad-icon">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+      </div>
+      <div class="ad-info">
+        <span class="ad-title">InstaGrab Desktop Helper</span>
+        <span class="ad-desc">Lossless 4K 60fps &amp; batch downloads</span>
+      </div>
+      <a href="https://akashbenniamin.github.io/InstaGrab/" target="_blank" class="ad-cta">Get</a>
+    </div>
+  </div>
 
   <div class="links">
     <a href="https://akashbenniamin.github.io/InstaGrab/" target="_blank" id="open-web">Open Full Web App</a>
