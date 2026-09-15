@@ -78,6 +78,9 @@ function normalizeMediaUrl(rawUrl) {
     }
     const u = new URL(uStr);
     if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
+      if (u.pathname.includes('/stories/') || u.pathname.includes('/s/')) {
+        return u.href;
+      }
       const match = u.pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
       if (match) {
         const type = u.pathname.includes('reel') ? 'reel' : (u.pathname.includes('tv') ? 'tv' : 'p');

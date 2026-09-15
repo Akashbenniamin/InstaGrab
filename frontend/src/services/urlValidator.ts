@@ -6,12 +6,12 @@ export interface ValidationResult {
   normalized?: string;
   shortcode?: string;
   platform: PlatformType;
-  contentType?: 'reel' | 'post' | 'tv' | 'shorts' | 'video' | 'clip' | 'live';
+  contentType?: 'reel' | 'post' | 'tv' | 'photo' | 'story' | 'highlight' | 'carousel' | 'shorts' | 'video' | 'clip' | 'live';
 }
 
 export function validateMediaUrl(url: string): ValidationResult {
   if (!url || url.trim() === '') {
-    return { valid: false, error: 'Please enter an Instagram or YouTube URL', platform: 'unknown' };
+    return { valid: false, error: 'Please enter an Instagram, YouTube, or Pinterest URL', platform: 'unknown' };
   }
 
   let parsedUrl: URL;
@@ -28,27 +28,67 @@ export function validateMediaUrl(url: string): ValidationResult {
   const hostname = parsedUrl.hostname.toLowerCase();
   const pathname = parsedUrl.pathname;
 
-  // 1. Instagram
+  // 1. Instagram (Reels, Posts/Photos, Stories, Highlights)
   if (hostname.includes('instagram.com') || hostname.includes('instagr.am')) {
-    const match = pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([^\/?#&]+)/);
-    if (!match) {
-      return { 
-        valid: false, 
-        error: "This Instagram URL doesn't point to a specific post or reel", 
-        platform: 'instagram' 
+    // A. Highlights via /s/ shortlink
+    const highlightShortMatch = pathname.match(/\/s\/([A-Za-z0-9_-]+)/);
+    if (highlightShortMatch) {
+      return {
+        valid: true,
+        normalized: `https://www.instagram.com/s/${highlightShortMatch[1]}`,
+        shortcode: highlightShortMatch[1],
+        platform: 'instagram',
+        contentType: 'highlight'
       };
     }
 
-    const shortcode = match[1];
-    const contentType = (pathname.includes('reel') ? 'reel' : (pathname.includes('tv') ? 'tv' : 'post')) as 'reel' | 'post' | 'tv';
-    const normalized = `https://www.instagram.com/${contentType === 'post' ? 'p' : contentType}/${shortcode}/`;
+    // B. Stories & Highlights via /stories/
+    const storyMatch = pathname.match(/\/stories\/([^/?#]+)(?:\/(\d+))?/);
+    if (storyMatch) {
+      const user = storyMatch[1];
+      const storyId = storyMatch[2];
+      if (user === 'highlights') {
+        return {
+          valid: true,
+          normalized: `https://www.instagram.com/stories/highlights/${storyId || ''}/`,
+          shortcode: storyId,
+          platform: 'instagram',
+          contentType: 'highlight'
+        };
+      }
+      return {
+        valid: true,
+        normalized: storyId 
+          ? `https://www.instagram.com/stories/${user}/${storyId}/`
+          : `https://www.instagram.com/stories/${user}/`,
+        shortcode: storyId || user,
+        platform: 'instagram',
+        contentType: 'story'
+      };
+    }
 
-    return {
-      valid: true,
-      normalized,
-      shortcode,
-      platform: 'instagram',
-      contentType
+    // C. Posts, Reels, Photos, Carousels, TV
+    const postMatch = pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([^\/?#&]+)/);
+    if (postMatch) {
+      const shortcode = postMatch[1];
+      const isReel = pathname.includes('/reel');
+      const isTv = pathname.includes('/tv/');
+      const contentType = isReel ? 'reel' : (isTv ? 'tv' : 'post');
+      const normalized = `https://www.instagram.com/${contentType === 'post' ? 'p' : contentType}/${shortcode}/`;
+
+      return {
+        valid: true,
+        normalized,
+        shortcode,
+        platform: 'instagram',
+        contentType
+      };
+    }
+
+    return { 
+      valid: false, 
+      error: "Please enter an Instagram Post, Photo, Reel, Story, or Highlight URL", 
+      platform: 'instagram' 
     };
   }
 

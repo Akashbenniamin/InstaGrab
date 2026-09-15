@@ -206,7 +206,7 @@ def create_app(config, downloader, token_manager):
             return jsonify({'error': err_msg}), 400
 
         # Canonical normalization for Instagram URLs
-        if platform == 'instagram':
+        if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
             match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
             if match:
                 shortcode = match.group(1)

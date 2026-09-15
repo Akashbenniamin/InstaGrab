@@ -51,7 +51,7 @@ class Downloader:
         if not is_valid:
             return {'error': err_msg}
 
-        if platform == 'instagram':
+        if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
             match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
             if match:
                 shortcode = match.group(1)
@@ -99,6 +99,23 @@ class Downloader:
                             playable_url = f.get('url')
                             break
 
+                media_type = 'video'
+                if '/stories/highlights/' in url or '/s/' in url:
+                    media_type = 'highlight'
+                elif '/stories/' in url:
+                    media_type = 'story'
+                elif info.get('_type') == 'playlist' or info.get('entries'):
+                    media_type = 'carousel'
+                elif not playable_url:
+                    formats = info.get('formats') or []
+                    if not formats or all(f.get('vcodec') == 'none' for f in formats):
+                        media_type = 'photo'
+
+                if not thumbnail and info.get('thumbnails'):
+                    thumb_list = info.get('thumbnails')
+                    if thumb_list:
+                        thumbnail = thumb_list[-1].get('url') or thumb_list[0].get('url')
+
                 return {
                     'title': title,
                     'thumbnail': thumbnail,
@@ -106,6 +123,7 @@ class Downloader:
                     'uploader': uploader,
                     'platform': platform,
                     'playable_url': playable_url,
+                    'media_type': media_type,
                 }
         except Exception as e:
             err_str = str(e)
@@ -162,7 +180,7 @@ class Downloader:
             self.progress_store.update(download_id, state='error', error=err_msg, errorType='unknown')
             return
 
-        if platform == 'instagram':
+        if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
             match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
             if match:
                 shortcode = match.group(1)
@@ -401,6 +419,14 @@ class Downloader:
                     self.progress_store.update(download_id, state='complete', progress=100.0, filepath=target_path, filename=target_filename)
         except Exception as e:
             err_str = str(e)
+            # Check if this is an Instagram photo or carousel where yt-dlp finds no video formats
+            if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and any(x in err_str.lower() for x in ['no video', 'requested format is not available', 'unable to extract', 'no media', "there's no video"]):
+                try:
+                    self._download_instagram_photo_or_carousel(url, download_id, base_path)
+                    return
+                except Exception as ig_err:
+                    err_str = f"Instagram download failed: {str(ig_err)}"
+
             # Check if this is a Pinterest image pin where yt-dlp finds no video formats
             if 'pinterest.' in url.lower() and ('no video' in err_str.lower() or 'unable to extract' in err_str.lower() or 'no media' in err_str.lower()):
                 try:
@@ -567,3 +593,90 @@ class Downloader:
 
         return filepath
 
+
+
+    def _download_instagram_photo_or_carousel(self, url: str, download_id: str, base_path: str):
+        import urllib.request
+        import json
+        import os
+        import re
+
+        self.progress_store.update(download_id, state='extracting', progress=15.0, filename="Fetching Instagram photos...")
+
+        cookie_file = self.config.get_cookie_file_path()
+        ydl_opts = {
+            'skip_download': True,
+            'quiet': True,
+            'no_warnings': True,
+        }
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                raise Exception("Could not extract media metadata from Instagram")
+
+            title = info.get('title') or info.get('id') or 'instagram_media'
+            safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or 'instagram_photo'
+
+            targets = []
+            if info.get('_type') == 'playlist' or info.get('entries'):
+                entries = [e for e in info.get('entries', []) if e]
+                for idx, entry in enumerate(entries):
+                    v_url = None
+                    for f in reversed(entry.get('formats', [])):
+                        if f.get('url') and f.get('vcodec') != 'none':
+                            v_url = f.get('url')
+                            break
+                    if v_url:
+                        targets.append((v_url, True, f"{safe_title}_{idx+1}.mp4"))
+                    else:
+                        img_url = entry.get('thumbnail')
+                        if not img_url and entry.get('thumbnails'):
+                            img_url = entry.get('thumbnails')[-1].get('url')
+                        if img_url:
+                            targets.append((img_url, False, f"{safe_title}_{idx+1}.jpg"))
+            else:
+                img_url = info.get('thumbnail')
+                if not img_url and info.get('thumbnails'):
+                    img_url = info.get('thumbnails')[-1].get('url')
+                if img_url:
+                    targets.append((img_url, False, f"{safe_title}.jpg"))
+
+            if not targets:
+                raise Exception("No photos or media streams found in this Instagram post")
+
+            self.progress_store.update(download_id, state='downloading', progress=40.0, filename=targets[0][2])
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.instagram.com/'
+            }
+
+            saved_files = []
+            for i, (media_url, is_vid, fname) in enumerate(targets):
+                target_file = os.path.join(base_path, fname)
+                base_name, ext = os.path.splitext(fname)
+                c = 1
+                while os.path.exists(target_file):
+                    target_file = os.path.join(base_path, f"{base_name} ({c}){ext}")
+                    fname = os.path.basename(target_file)
+                    c += 1
+
+                req = urllib.request.Request(media_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    with open(target_file, 'wb') as out_f:
+                        out_f.write(resp.read())
+                saved_files.append((target_file, fname))
+                pct = 40.0 + (55.0 * (i + 1) / len(targets))
+                self.progress_store.update(download_id, state='downloading', progress=round(pct, 1), filename=fname)
+
+            last_path, last_name = saved_files[0]
+            self.progress_store.update(
+                download_id, 
+                state='complete', 
+                progress=100.0, 
+                filepath=last_path, 
+                filename=last_name if len(saved_files) == 1 else f"{len(saved_files)} items downloaded"
+            )

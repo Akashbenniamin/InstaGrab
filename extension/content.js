@@ -134,6 +134,11 @@
 
     // 3. Instagram
     if (host.includes('instagram.com')) {
+      // Stories & Highlights
+      if (path.includes('/stories/') || path.startsWith('/s/')) {
+        return { url: window.location.href, platform: 'instagram' };
+      }
+
       // Direct post/reel URL
       const directMatch = path.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
       if (directMatch) {
@@ -298,6 +303,9 @@
       }
       const u = new URL(uStr);
       if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
+        if (u.pathname.includes('/stories/') || u.pathname.startsWith('/s/')) {
+          return u.href;
+        }
         const match = u.pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
         if (match) {
           const type = u.pathname.includes('reel') ? 'reel' : (u.pathname.includes('tv') ? 'tv' : 'p');
@@ -637,6 +645,38 @@
         }
       }
     });
+
+    // 3. Instagram Stories & Highlights Viewer
+    if (window.location.pathname.includes('/stories/') || window.location.pathname.startsWith('/s/')) {
+      const closeBtn = document.querySelector('svg[aria-label*="Close"], svg[aria-label*="बंद करें"]')?.closest('button, div[role="button"]');
+      const moreBtn = document.querySelector('svg[aria-label*="More options"], svg[aria-label*="विकल्प"], svg[aria-label*="Options"]')?.closest('button, div[role="button"]');
+      const muteBtn = document.querySelector('svg[aria-label*="Audio"], svg[aria-label*="Mute"], svg[aria-label*="Unmute"]')?.closest('button, div[role="button"]');
+      const storyHeader = document.querySelector('section header, div[role="dialog"] header, header:has(svg)');
+      const targetContainer = (closeBtn?.parentNode) || (moreBtn?.parentNode) || (muteBtn?.parentNode) || storyHeader;
+
+      if (targetContainer && !document.getElementById('instagrab-ig-story-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'instagrab-ig-story-btn';
+        btn.type = 'button';
+        btn.className = 'instagrab-ig-story-btn';
+        btn.innerHTML = DOWNLOAD_ICON;
+        btn.title = 'Download Story / Highlight with InstaGrab';
+
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          downloadMedia(window.location.href, btn);
+        });
+
+        if (closeBtn && closeBtn.parentNode) {
+          closeBtn.parentNode.insertBefore(btn, closeBtn);
+        } else if (moreBtn && moreBtn.parentNode) {
+          moreBtn.parentNode.insertBefore(btn, moreBtn);
+        } else {
+          targetContainer.appendChild(btn);
+        }
+      }
+    }
   }
 
   // ================= DISPATCHER & OBSERVER =================

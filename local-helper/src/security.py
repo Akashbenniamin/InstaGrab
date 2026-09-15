@@ -43,16 +43,20 @@ def validate_media_url(url: str) -> tuple[bool, str, str]:
 
     netloc = parsed.netloc.lower()
 
-    # 1. Instagram validation
+    # 1. Instagram validation (Posts, Photos, Reels, TV, Stories, Highlights)
     if any(domain in netloc for domain in ['instagram.com', 'instagr.am']):
-        # Support /reel/<id>, /reels/<id>, /p/<id>, /tv/<id>, /share/reel/<id>, /share/p/<id>,
-        # or profile-prefixed /<username>/reel/<id>, /<username>/reels/<id>, etc.
-        match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)/?$', parsed.path)
+        # Stories & Highlights
+        if re.search(r'/stories/([^/?#]+)(?:/(\d+))?', parsed.path) or re.search(r'/s/([A-Za-z0-9_-]+)', parsed.path):
+            return True, "", "instagram"
+
+        # Posts, Photos, Reels, TV
+        match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', parsed.path)
         if match:
             shortcode = match.group(1)
             if len(shortcode) >= 3:
                 return True, "", "instagram"
-        return False, "Invalid Instagram URL. Only reel, p, or tv links are accepted.", "instagram"
+
+        return False, "Invalid Instagram URL. Please provide a valid Post, Photo, Reel, Story, or Highlight link.", "instagram"
 
     # 2. YouTube validation (Shorts, Videos, youtu.be, clips, live)
     if 'youtu.be' in netloc:

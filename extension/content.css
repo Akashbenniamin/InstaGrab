@@ -378,8 +378,53 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   width: 20px !important;
   height: 20px !important;
   stroke: #ffffff !important;
+  stroke-width: 2.2 !important;
+  fill: none !important;
+}
+
+/* Instagram Story & Highlights Viewer Button */
+.instagrab-ig-story-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin: 0 6px !important;
+  box-shadow: none !important;
+  transition: transform 0.18s ease, background 0.18s ease !important;
+  vertical-align: middle !important;
+  z-index: 99999 !important;
+}
+
+.instagrab-ig-story-btn:hover {
+  transform: scale(1.1) !important;
+  background: #0095f6 !important;
+}
+
+.instagrab-ig-story-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  stroke: #ffffff !important;
   stroke-width: 2.3 !important;
   fill: none !important;
+}
+
+.instagrab-ig-story-btn.instagrab-loading {
+  background: #262626 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-ig-story-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-ig-story-btn.instagrab-success {
+  background: #10b981 !important;
 }
 
 .instagrab-ig-reel-btn.instagrab-loading {

@@ -1,14 +1,15 @@
 import { FormatType } from '../types';
-import { Loader2, Music, Video } from 'lucide-react';
+import { Loader2, Music, Video, Image as ImageIcon, Layers, Sparkles, Bookmark } from 'lucide-react';
 
 interface Props {
   onClick: () => void;
   disabled: boolean;
   loading: boolean;
   formatType?: FormatType;
+  mediaType?: string;
 }
 
-export function DownloadButton({ onClick, disabled, loading, formatType = 'video' }: Props) {
+export function DownloadButton({ onClick, disabled, loading, formatType = 'video', mediaType }: Props) {
   const getButtonContent = () => {
     if (loading) {
       return (
@@ -18,14 +19,65 @@ export function DownloadButton({ onClick, disabled, loading, formatType = 'video
         </>
       );
     }
+
+    if (formatType === 'audio') {
+      return (
+        <>
+          <Music className="w-5 h-5 mr-2" />
+          <span>Download Audio (MP3)</span>
+        </>
+      );
+    }
+
+    if (mediaType === 'photo') {
+      return (
+        <>
+          <ImageIcon className="w-5 h-5 mr-2" />
+          <span>Download Photo</span>
+        </>
+      );
+    }
+
+    if (mediaType === 'carousel') {
+      return (
+        <>
+          <Layers className="w-5 h-5 mr-2" />
+          <span>Download Album / Carousel</span>
+        </>
+      );
+    }
+
+    if (mediaType === 'story') {
+      return (
+        <>
+          <Sparkles className="w-5 h-5 mr-2" />
+          <span>Download Story</span>
+        </>
+      );
+    }
+
+    if (mediaType === 'highlight') {
+      return (
+        <>
+          <Bookmark className="w-5 h-5 mr-2" />
+          <span>Download Highlight</span>
+        </>
+      );
+    }
+
+    if (mediaType === 'reel') {
+      return (
+        <>
+          <Video className="w-5 h-5 mr-2" />
+          <span>Download Reel (MP4)</span>
+        </>
+      );
+    }
+
     return (
       <>
-        {formatType === 'audio' ? (
-          <Music className="w-5 h-5 mr-2" />
-        ) : (
-          <Video className="w-5 h-5 mr-2" />
-        )}
-        <span>{formatType === 'audio' ? 'Download Audio (MP3)' : 'Download Video (MP4)'}</span>
+        <Video className="w-5 h-5 mr-2" />
+        <span>Download Video (MP4)</span>
       </>
     );
   };

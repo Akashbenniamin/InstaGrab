@@ -305,6 +305,7 @@ class HelperApi {
     uploader?: string;
     platform?: string;
     playable_url?: string | null;
+    media_type?: string;
     error?: string;
   } | null> {
     try {

@@ -42,6 +42,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [quickMode, setQuickMode] = useState(() => localStorage.getItem('insta_dl_quick_mode') === 'true');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [detectedMediaType, setDetectedMediaType] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setHistory(getHistory());
@@ -58,6 +59,16 @@ function App() {
   const handleUrlChange = (value: string) => {
     setUrl(value);
     setUrlError('');
+    if (!value.trim()) {
+      setDetectedMediaType(undefined);
+    } else {
+      const val = validateMediaUrl(value.trim());
+      if (val.valid) {
+        setDetectedMediaType(val.contentType);
+      } else {
+        setDetectedMediaType(undefined);
+      }
+    }
   };
 
   const handleDownload = async (overrideUrl?: string) => {
@@ -161,6 +172,7 @@ function App() {
                         disabled={!url || !!urlError}
                         loading={isSubmitting}
                         formatType={formatType}
+                        mediaType={detectedMediaType}
                       />
 
                       {/* Revamped Quick Mode Switch Tile */}
@@ -213,7 +225,12 @@ function App() {
 
                   {/* Right Column: Live Thumbnail & Media Preview */}
                   <div className="md:col-span-5 flex flex-col">
-                    <MediaPreview url={url} />
+                    <MediaPreview 
+                      url={url} 
+                      onMediaDetected={({ mediaType }) => {
+                        if (mediaType) setDetectedMediaType(mediaType);
+                      }}
+                    />
                   </div>
                 </div>
 

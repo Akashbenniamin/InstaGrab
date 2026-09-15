@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2 } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 import { validateMediaUrl } from '../services/urlValidator';
 
 interface Props {
   url: string;
+  onMediaDetected?: (info: { mediaType?: string; contentType?: string; title?: string }) => void;
 }
 
-export const MediaPreview: React.FC<Props> = ({ url }) => {
+export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
   const [info, setInfo] = useState<{
     title?: string;
     thumbnail?: string;
@@ -15,11 +16,13 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
     uploader?: string;
     platform?: string;
     playable_url?: string | null;
+    media_type?: string;
   } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [ytId, setYtId] = useState<string | null>(null);
+  const [detectedContentType, setDetectedContentType] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setIsPlaying(false);
@@ -27,6 +30,7 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
     if (!trimmed) {
       setInfo(null);
       setYtId(null);
+      setDetectedContentType(undefined);
       return;
     }
 
@@ -34,7 +38,16 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
     if (!val.valid) {
       setInfo(null);
       setYtId(null);
+      setDetectedContentType(undefined);
       return;
+    }
+
+    setDetectedContentType(val.contentType);
+    if (onMediaDetected) {
+      onMediaDetected({
+        contentType: val.contentType,
+        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : undefined))
+      });
     }
 
     // 1. YouTube instant client-side thumbnail & ID extraction
@@ -44,9 +57,10 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
       setYtId(id);
       if (id) {
         setInfo({
-          title: 'YouTube Video',
+          title: val.contentType === 'shorts' ? 'YouTube Short' : 'YouTube Video',
           thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
-          platform: 'youtube'
+          platform: 'youtube',
+          media_type: val.contentType === 'shorts' ? 'shorts' : 'video'
         });
       }
     } else {
@@ -60,6 +74,7 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
 
     helperApi.getMediaInfo(trimmed).then(res => {
       if (!isCancelled && res && !res.error) {
+        const resolvedMediaType = res.media_type || (val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : 'video')));
         setInfo(prev => ({
           ...prev,
           title: res.title || prev?.title || 'Media Post',
@@ -67,8 +82,17 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
           duration: res.duration,
           uploader: res.uploader,
           platform: res.platform || val.platform,
-          playable_url: res.playable_url
+          playable_url: res.playable_url,
+          media_type: resolvedMediaType
         }));
+
+        if (onMediaDetected) {
+          onMediaDetected({
+            mediaType: resolvedMediaType,
+            contentType: val.contentType,
+            title: res.title
+          });
+        }
       }
     }).finally(() => {
       if (!isCancelled) setLoading(false);
@@ -86,6 +110,62 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const getMediaBadge = () => {
+    const type = info?.media_type || detectedContentType;
+    if (type === 'story') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-xs">
+          <Sparkles className="w-2.5 h-2.5" /> Story
+        </span>
+      );
+    }
+    if (type === 'highlight') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-xs">
+          <Bookmark className="w-2.5 h-2.5" /> Highlight
+        </span>
+      );
+    }
+    if (type === 'reel') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-fuchsia-600 to-rose-600 text-white shadow-xs">
+          <Film className="w-2.5 h-2.5" /> Reel
+        </span>
+      );
+    }
+    if (type === 'carousel') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs">
+          <Layers className="w-2.5 h-2.5" /> Carousel / Album
+        </span>
+      );
+    }
+    if (type === 'photo') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs">
+          <ImageIcon className="w-2.5 h-2.5" /> Photo
+        </span>
+      );
+    }
+    if (type === 'shorts') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600 text-white shadow-xs">
+          <Film className="w-2.5 h-2.5" /> Shorts
+        </span>
+      );
+    }
+    if (info?.platform === 'pinterest') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-700 text-white shadow-xs">
+          Pin
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const isPhoto = info?.media_type === 'photo';
+
   // Blank placeholder state
   if (!url.trim() || (!info?.thumbnail && !loading)) {
     return (
@@ -94,8 +174,8 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
           <Video className="w-5 h-5" style={{ color: 'var(--accent-color)' }} />
         </div>
         <p className="text-xs font-bold text-[var(--text-primary)]">Live Media Preview</p>
-        <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-[210px]">
-          Paste any Instagram Reel, YouTube Video, or Pinterest Pin to preview media & thumbnail
+        <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-[220px]">
+          Paste any Instagram Reel, Photo, Story, Highlight, YouTube Video, or Pinterest Pin
         </p>
       </div>
     );
@@ -143,8 +223,8 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
               </div>
             )}
 
-            {/* Play Button Overlay */}
-            {(ytId || info?.playable_url) && (
+            {/* Play Button Overlay (Only when video stream is playable and NOT a static photo) */}
+            {!isPhoto && (ytId || info?.playable_url) && (
               <button
                 type="button"
                 onClick={() => setIsPlaying(true)}
@@ -158,6 +238,11 @@ export const MediaPreview: React.FC<Props> = ({ url }) => {
                 <Play className="w-5 h-5 ml-0.5 fill-current" />
               </button>
             )}
+
+            {/* Auto-recognized Media Type Badge */}
+            <div className="absolute top-2 right-2">
+              {getMediaBadge()}
+            </div>
 
             {/* Duration Badge */}
             {info?.duration ? (
