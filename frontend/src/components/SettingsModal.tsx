@@ -11,7 +11,8 @@ import {
   CheckCircle2, 
   Sliders, 
   Puzzle, 
-  Download 
+  Download,
+  ShieldCheck 
 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
 import { HelperStatus } from '../types';
@@ -418,6 +419,22 @@ export const SettingsModal: React.FC<Props> = ({
                 </a>
               </div>
 
+              {/* Automated 18+ Session Sync Feature Highlight */}
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#10b981]" />
+                    <span className="text-xs font-bold text-[var(--text-primary)]">Automated 18+ Reel &amp; Private Session Sync</span>
+                  </div>
+                  <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-[var(--badge-bg)] text-[var(--badge-text)] uppercase">
+                    Seamless
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                  The extension automatically syncs your logged-in Instagram session to the Desktop Engine in the background. Age-restricted and sensitive 18+ reels download seamlessly with zero manual export needed.
+                </p>
+              </div>
+
               {/* Minimal Clean Steps (No Clutter) */}
               <div className="space-y-2 pt-1">
                 <h4 className="text-xs font-bold text-[var(--text-primary)]">
@@ -469,9 +486,9 @@ export const SettingsModal: React.FC<Props> = ({
                 <div className="font-bold text-[var(--text-primary)]">InstaGrab Engine Diagnostics</div>
                 <div className="grid grid-cols-2 gap-3 text-[11px] text-[var(--text-secondary)]">
                   <div>Status: <span className="font-bold" style={{ color: 'var(--accent-color)' }}>{status.connected ? 'Active (Port 18765)' : 'Offline'}</span></div>
-                  <div>Version: <span className="font-bold text-[var(--text-primary)]">{status.version || 'v1.0.9'}</span></div>
+                  <div>Version: <span className="font-bold text-[var(--text-primary)]">{status.version || 'v1.1.0'}</span></div>
                   <div>Platforms: <span className="font-bold text-[var(--text-primary)]">Instagram, YouTube, Pinterest</span></div>
-                  <div>NLE Preset: <span className="font-bold text-[var(--text-primary)]">CFR 60fps, LC-AAC 48kHz (-bf 0)</span></div>
+                  <div>18+ Session Sync: <span className="font-bold" style={{ color: status.hasCookies ? '#10b981' : 'var(--text-secondary)' }}>{status.hasCookies ? 'Active (Synced)' : 'Auto-Sync Active'}</span></div>
                 </div>
               </div>
 

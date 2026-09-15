@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "InstaGrab - 1-Click Media Downloader",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Download Instagram, YouTube, and Pinterest media directly to your browser via InstaGrab.",
   "permissions": [
     "storage",
@@ -9,7 +9,8 @@
     "activeTab",
     "tabs",
     "clipboardRead",
-    "contextMenus"
+    "contextMenus",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>",

@@ -23,6 +23,7 @@ export interface HelperStatus {
   paired: boolean;
   version?: string;
   downloadPath?: string;
+  hasCookies?: boolean;
 }
 
 export interface HistoryEntry {
@@ -41,6 +42,7 @@ export interface HelperHealthResponse {
   version: string;
   downloadPath: string;
   ytdlpVersion: string;
+  hasCookies?: boolean;
 }
 
 export interface HelperDownloadResponse {

@@ -24,7 +24,8 @@ export function useHelperConnection() {
         connected: true, 
         paired: hasValidToken,
         version: data.version,
-        downloadPath: data.downloadPath
+        downloadPath: data.downloadPath,
+        hasCookies: data.hasCookies
       });
     } catch (e) {
       setStatus({ connected: false, paired: false });

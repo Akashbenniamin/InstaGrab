@@ -167,6 +167,46 @@ async function pollDownloadStatus(downloadId, token, tabId) {
   }
 }
 
+// Helper to retrieve active browser cookies for authentication (18+ / private content)
+async function getCookiesForUrl(url) {
+  if (!chrome.cookies || !chrome.cookies.getAll) return null;
+  try {
+    let domain = 'instagram.com';
+    if (url && url.includes('youtube.com')) domain = 'youtube.com';
+    else if (url && url.includes('pinterest.com')) domain = 'pinterest.com';
+    const cookies = await chrome.cookies.getAll({ domain });
+    return (cookies && cookies.length > 0) ? cookies : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Background cookie sync to Desktop Engine
+async function syncCookiesToHelper(domain = 'instagram.com') {
+  if (!chrome.cookies || !chrome.cookies.getAll) return false;
+  try {
+    const cookies = await chrome.cookies.getAll({ domain });
+    if (!cookies || cookies.length === 0) return false;
+    const token = await getAuthToken();
+    if (!token) return false;
+    const resp = await fetch(`${HELPER_BASE}/api/cookies/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'InstaGrab',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ platform: domain.replace('.com', ''), cookies })
+    });
+    if (resp.ok) {
+      console.log(`[InstaGrab] Successfully synced ${cookies.length} ${domain} session cookies to Desktop Engine`);
+    }
+    return resp.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Asynchronous start download job with immediate handshake
 async function startDownload(url, formatType, quality, tabId = null) {
   url = normalizeMediaUrl(url);
@@ -195,6 +235,14 @@ async function startDownload(url, formatType, quality, tabId = null) {
 
   try {
     // 1. Submit download request to Desktop Engine
+    const cookies = await getCookiesForUrl(url);
+    const downloadPayload = {
+      url: url,
+      format_type: formatType || 'video',
+      quality: quality || 'best'
+    };
+    if (cookies) downloadPayload.cookies = cookies;
+
     let resp = await fetch(`${HELPER_BASE}/api/download`, {
       method: 'POST',
       headers: {
@@ -202,11 +250,7 @@ async function startDownload(url, formatType, quality, tabId = null) {
         'X-Requested-With': 'InstaGrab',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({
-        url: url,
-        format_type: formatType || 'video',
-        quality: quality || 'best'
-      })
+      body: JSON.stringify(downloadPayload)
     });
 
     // If token expired, refresh and retry once
@@ -227,11 +271,7 @@ async function startDownload(url, formatType, quality, tabId = null) {
           'X-Requested-With': 'InstaGrab',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          url: url,
-          format_type: formatType || 'video',
-          quality: quality || 'best'
-        })
+        body: JSON.stringify(downloadPayload)
       });
     }
 
@@ -401,8 +441,30 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   });
 }
 
+
+// Automated Seamless Background Cookie Sync
+chrome.runtime.onStartup.addListener(() => {
+  syncCookiesToHelper('instagram.com');
+});
+chrome.runtime.onInstalled.addListener(() => {
+  syncCookiesToHelper('instagram.com');
+});
+if (chrome.tabs && chrome.tabs.onUpdated) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && tab && tab.url && tab.url.includes('instagram.com')) {
+      syncCookiesToHelper('instagram.com');
+    }
+  });
+}
+
 // Message Listener for Content Scripts & Popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'syncCookies') {
+    syncCookiesToHelper(request.domain || 'instagram.com').then((success) => {
+      sendResponse({ success });
+    });
+    return true;
+  }
   if (request.action === 'checkHealth') {
     checkHealth().then(sendResponse);
     return true;

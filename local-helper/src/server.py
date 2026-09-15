@@ -128,12 +128,14 @@ def create_app(config, downloader, token_manager):
     def health():
         if request.method == 'OPTIONS':
             return '', 204
+        cookie_path = config.get_cookie_file_path()
         return jsonify({
             'status': 'ok',
-            'version': '1.0.9',
+            'version': '1.1.0',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
-            'paired': len(token_manager.tokens) > 0
+            'paired': len(token_manager.tokens) > 0,
+            'hasCookies': bool(cookie_path and os.path.exists(cookie_path))
         })
 
     @app.route('/api/pair/auto', methods=['GET', 'POST', 'OPTIONS'])
@@ -166,6 +168,20 @@ def create_app(config, downloader, token_manager):
             return jsonify({'token': result, 'status': 'paired'})
         return jsonify({'error': result}), 403
 
+    @app.route('/api/cookies/sync', methods=['POST', 'OPTIONS'])
+    def sync_cookies():
+        if request.method == 'OPTIONS':
+            return '', 204
+        data = request.json or {}
+        cookies_list = data.get('cookies') or []
+        if not cookies_list:
+            return jsonify({'error': 'No cookies provided'}), 400
+        
+        saved = config.save_netscape_cookies(cookies_list)
+        if saved:
+            return jsonify({'success': True, 'count': len(cookies_list)})
+        return jsonify({'error': 'Failed to save cookies'}), 500
+
     @app.route('/api/download', methods=['POST', 'OPTIONS'])
     def download():
         if request.method == 'OPTIONS':
@@ -177,6 +193,13 @@ def create_app(config, downloader, token_manager):
         url = data.get('url')
         if not url:
             return jsonify({'error': 'URL required'}), 400
+
+        # Auto-sync cookies if provided with download request
+        if data.get('cookies'):
+            try:
+                config.save_netscape_cookies(data.get('cookies'))
+            except Exception:
+                pass
 
         is_valid, err_msg, platform = validate_media_url(url)
         if not is_valid:

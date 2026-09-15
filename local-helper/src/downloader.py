@@ -68,7 +68,10 @@ class Downloader:
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
-        if self.config.get('use_browser_cookies'):
+        cookie_file = self.config.get_cookie_file_path()
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
+        elif self.config.get('use_browser_cookies'):
             browser = self.config.get('browser_for_cookies')
             if browser:
                 ydl_opts['cookiesfrombrowser'] = (browser,)
@@ -311,7 +314,10 @@ class Downloader:
                     'bestvideo+bestaudio/best'
                 )
 
-        if self.config.get('use_browser_cookies'):
+        cookie_file = self.config.get_cookie_file_path()
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
+        elif self.config.get('use_browser_cookies'):
             browser = self.config.get('browser_for_cookies')
             if browser:
                 ydl_opts['cookiesfrombrowser'] = (browser,)
