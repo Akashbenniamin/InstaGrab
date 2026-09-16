@@ -610,17 +610,24 @@ class Downloader:
             creationflags = subprocess.CREATE_NO_WINDOW
 
         try:
-            probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'json', filepath]
+            probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_name,codec_type,width,height,sample_aspect_ratio', '-of', 'json', filepath]
             probe_res = subprocess.check_output(probe_cmd, startupinfo=si, creationflags=creationflags, timeout=15)
             data = json.loads(probe_res.decode('utf-8'))
             streams = data.get('streams', [])
-            video_codecs = [s.get('codec_name', '').lower() for s in streams if s.get('codec_type') == 'video']
+            v_stream = next((s for s in streams if s.get('codec_type') == 'video'), {})
+            v_codec = v_stream.get('codec_name', '').lower()
+            width = v_stream.get('width')
+            height = v_stream.get('height')
+            sar = v_stream.get('sample_aspect_ratio')
+            is_non_square_sar = bool(sar and sar not in ('1:1', '0:1', '1/1', '0/1'))
 
-            if any(vc in ('vp9', 'vp8', 'av1', 'av01') for vc in video_codecs):
+            # Case 1: Transcode if using unsupported codecs (VP9, VP8, AV1)
+            if v_codec in ('vp9', 'vp8', 'av1', 'av01'):
                 temp_fixed = filepath + '.compat.mp4'
+                vf_filters = 'setsar=1,setpts=PTS-STARTPTS'
                 transcode_cmd = [
                     ffmpeg_bin, '-y', '-i', filepath,
-                    '-vf', 'setpts=PTS-STARTPTS',
+                    '-vf', vf_filters,
                     '-af', 'asetpts=PTS-STARTPTS,aresample=async=1',
                     '-c:v', 'libx264', '-crf', '17', '-preset', 'fast', '-pix_fmt', 'yuv420p',
                     '-fps_mode', 'cfr', '-g', '60', '-keyint_min', '60', '-bf', '0',
@@ -630,6 +637,31 @@ class Downloader:
                     temp_fixed
                 ]
                 subprocess.run(transcode_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=300)
+                if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
+                    try:
+                        os.replace(temp_fixed, filepath)
+                    except Exception:
+                        import shutil
+                        try:
+                            os.remove(filepath)
+                            shutil.move(temp_fixed, filepath)
+                        except Exception:
+                            filepath = temp_fixed
+
+            # Case 2: Codec is H.264, but has non-square SAR (anamorphic pixels that cause stretching in After Effects)
+            elif is_non_square_sar and width and height:
+                temp_fixed = filepath + '.sar.mp4'
+                # Lossless bitstream SAR normalization to 1:1
+                sar_cmd = [
+                    ffmpeg_bin, '-y', '-i', filepath,
+                    '-c:v', 'copy',
+                    '-c:a', 'copy',
+                    '-bsf:v', 'h264_metadata=sample_aspect_ratio=1/1',
+                    '-aspect', f"{width}:{height}",
+                    '-movflags', '+faststart',
+                    temp_fixed
+                ]
+                subprocess.run(sar_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=60)
                 if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
                     try:
                         os.replace(temp_fixed, filepath)
