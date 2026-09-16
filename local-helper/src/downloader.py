@@ -133,6 +133,23 @@ class Downloader:
                 }
         except Exception as e:
             err_str = str(e)
+            # Instagram photo / carousel fallback if yt-dlp finds no video formats or fails
+            if platform == 'instagram':
+                try:
+                    ig_info = self._fetch_instagram_post_info(url)
+                    if ig_info:
+                        return {
+                            'title': ig_info.get('title'),
+                            'thumbnail': ig_info.get('thumbnail'),
+                            'duration': 0,
+                            'uploader': ig_info.get('uploader'),
+                            'platform': 'instagram',
+                            'playable_url': ig_info.get('playable_url'),
+                            'media_type': ig_info.get('media_type', 'photo'),
+                        }
+                except Exception:
+                    pass
+
             # Pinterest fallback if no video found
             if platform == 'pinterest' and 'pin' in url:
                 try:
@@ -471,8 +488,8 @@ class Downloader:
                 except Exception as retry_err:
                     err_str = f"YouTube download error: {str(retry_err)}"
 
-            # Check if this is an Instagram photo or carousel where yt-dlp finds no video formats
-            if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and any(x in err_str.lower() for x in ['no video', 'requested format is not available', 'unable to extract', 'no media', "there's no video"]):
+            # Check if this is an Instagram photo, carousel, or post where yt-dlp finds no video formats or fails
+            if 'instagram.' in url.lower() or 'instagr.am' in url.lower():
                 try:
                     self._download_instagram_photo_or_carousel(url, download_id, base_path)
                     return
@@ -679,88 +696,182 @@ class Downloader:
 
 
 
+    def _fetch_instagram_post_info(self, url: str) -> dict:
+        import urllib.request
+        import http.cookiejar
+        import json
+        import re
+
+        match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+        if not match:
+            raise Exception("Could not parse Instagram shortcode from URL")
+
+        shortcode = match.group(1)
+
+        # Convert shortcode to numeric pk
+        table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+        sc_clean = shortcode[:-28] if len(shortcode) > 28 else shortcode
+        pk = 0
+        for char in sc_clean:
+            if char in table:
+                pk = (pk * 64) + table.index(char)
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'X-IG-App-ID': '936619743392459',
+            'X-ASBD-ID': '129477',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://www.instagram.com/',
+        }
+
+        cookie_file = self.config.get_cookie_file_path('instagram')
+        if cookie_file and os.path.exists(cookie_file):
+            try:
+                cj = http.cookiejar.MozillaCookieJar(cookie_file)
+                cj.load(ignore_discard=True, ignore_expires=True)
+                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+            except Exception:
+                opener = urllib.request.build_opener()
+        else:
+            opener = urllib.request.build_opener()
+
+        item = None
+        if pk > 0:
+            api_url = f'https://i.instagram.com/api/v1/media/{pk}/info/'
+            try:
+                req = urllib.request.Request(api_url, headers=headers)
+                with opener.open(req, timeout=12) as resp:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    items = data.get('items', [])
+                    if items:
+                        item = items[0]
+            except Exception:
+                pass
+
+        # Fallback to direct page scraping if API fails or returns no items
+        if not item:
+            page_req = urllib.request.Request(f'https://www.instagram.com/p/{shortcode}/', headers=headers)
+            with opener.open(page_req, timeout=12) as p_resp:
+                html = p_resp.read().decode('utf-8', errors='ignore')
+                og_img = re.search(r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html)
+                og_title = re.search(r'<meta\s+(?:property|name)=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html)
+                if not og_img:
+                    raise Exception("Could not find media content in this Instagram post")
+                img_url = og_img.group(1).replace('&amp;', '&')
+                title = og_title.group(1) if og_title else f"instagram_photo_{shortcode}"
+                clean_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or f"instagram_{shortcode}"
+                return {
+                    'title': title,
+                    'thumbnail': img_url,
+                    'duration': 0,
+                    'uploader': 'Instagram',
+                    'platform': 'instagram',
+                    'playable_url': None,
+                    'media_type': 'photo',
+                    'targets': [(img_url, False, f"{clean_title}.jpg")]
+                }
+
+        caption = item.get('caption', {}).get('text', '') if item.get('caption') else ''
+        title = caption.split('\n')[0].strip() or f"instagram_{shortcode}"
+        safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or f"instagram_{shortcode}"
+        uploader = item.get('user', {}).get('username') or 'instagram_user'
+
+        targets = []
+        item_type = item.get('media_type')
+        playable_url = None
+
+        if item_type == 8 and item.get('carousel_media'):
+            media_type = 'carousel'
+            for idx, slide in enumerate(item['carousel_media']):
+                if slide.get('video_versions'):
+                    v_url = slide['video_versions'][0]['url']
+                    targets.append((v_url, True, f"{safe_title}_{idx+1}.mp4"))
+                    if not playable_url:
+                        playable_url = v_url
+                elif slide.get('image_versions2', {}).get('candidates'):
+                    img_url = slide['image_versions2']['candidates'][0]['url']
+                    targets.append((img_url, False, f"{safe_title}_{idx+1}.jpg"))
+        elif item.get('video_versions'):
+            media_type = 'video'
+            v_url = item['video_versions'][0]['url']
+            playable_url = v_url
+            targets.append((v_url, True, f"{safe_title}.mp4"))
+        elif item.get('image_versions2', {}).get('candidates'):
+            media_type = 'photo'
+            img_url = item['image_versions2']['candidates'][0]['url']
+            targets.append((img_url, False, f"{safe_title}.jpg"))
+        else:
+            raise Exception("No photos or videos found in this Instagram post")
+
+        thumbnail = None
+        if item.get('image_versions2', {}).get('candidates'):
+            thumbnail = item['image_versions2']['candidates'][0]['url']
+        elif targets:
+            thumbnail = targets[0][0]
+
+        return {
+            'title': title,
+            'thumbnail': thumbnail,
+            'duration': 0,
+            'uploader': uploader,
+            'platform': 'instagram',
+            'playable_url': playable_url,
+            'media_type': media_type,
+            'targets': targets
+        }
+
     def _download_instagram_photo_or_carousel(self, url: str, download_id: str, base_path: str):
         import urllib.request
-        import json
         import os
-        import re
 
         self.progress_store.update(download_id, state='extracting', progress=15.0, filename="Fetching Instagram photos...")
 
-        cookie_file = self.config.get_cookie_file_path()
-        ydl_opts = {
-            'skip_download': True,
-            'quiet': True,
-            'no_warnings': True,
+        post_info = self._fetch_instagram_post_info(url)
+        targets = post_info.get('targets', [])
+
+        if not targets:
+            raise Exception("No photos or media streams found in this Instagram post")
+
+        self.progress_store.update(download_id, state='downloading', progress=30.0, filename=targets[0][2])
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Referer': 'https://www.instagram.com/'
         }
-        if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                raise Exception("Could not extract media metadata from Instagram")
+        saved_files = []
+        ffmpeg_dir = get_ffmpeg_dir()
 
-            title = info.get('title') or info.get('id') or 'instagram_media'
-            safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or 'instagram_photo'
+        for i, (media_url, is_vid, fname) in enumerate(targets):
+            target_file = os.path.join(base_path, fname)
+            base_name, ext = os.path.splitext(fname)
+            c = 1
+            while os.path.exists(target_file):
+                target_file = os.path.join(base_path, f"{base_name} ({c}){ext}")
+                fname = os.path.basename(target_file)
+                c += 1
 
-            targets = []
-            if info.get('_type') == 'playlist' or info.get('entries'):
-                entries = [e for e in info.get('entries', []) if e]
-                for idx, entry in enumerate(entries):
-                    v_url = None
-                    for f in reversed(entry.get('formats', [])):
-                        if f.get('url') and f.get('vcodec') != 'none':
-                            v_url = f.get('url')
-                            break
-                    if v_url:
-                        targets.append((v_url, True, f"{safe_title}_{idx+1}.mp4"))
-                    else:
-                        img_url = entry.get('thumbnail')
-                        if not img_url and entry.get('thumbnails'):
-                            img_url = entry.get('thumbnails')[-1].get('url')
-                        if img_url:
-                            targets.append((img_url, False, f"{safe_title}_{idx+1}.jpg"))
-            else:
-                img_url = info.get('thumbnail')
-                if not img_url and info.get('thumbnails'):
-                    img_url = info.get('thumbnails')[-1].get('url')
-                if img_url:
-                    targets.append((img_url, False, f"{safe_title}.jpg"))
+            req = urllib.request.Request(media_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                with open(target_file, 'wb') as out_f:
+                    out_f.write(resp.read())
 
-            if not targets:
-                raise Exception("No photos or media streams found in this Instagram post")
-
-            self.progress_store.update(download_id, state='downloading', progress=40.0, filename=targets[0][2])
-
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.instagram.com/'
-            }
-
-            saved_files = []
-            for i, (media_url, is_vid, fname) in enumerate(targets):
-                target_file = os.path.join(base_path, fname)
-                base_name, ext = os.path.splitext(fname)
-                c = 1
-                while os.path.exists(target_file):
-                    target_file = os.path.join(base_path, f"{base_name} ({c}){ext}")
+            if is_vid and target_file.lower().endswith('.mp4'):
+                try:
+                    target_file = self._ensure_h264_compatible(target_file, ffmpeg_dir)
                     fname = os.path.basename(target_file)
-                    c += 1
+                except Exception:
+                    pass
 
-                req = urllib.request.Request(media_url, headers=headers)
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    with open(target_file, 'wb') as out_f:
-                        out_f.write(resp.read())
-                saved_files.append((target_file, fname))
-                pct = 40.0 + (55.0 * (i + 1) / len(targets))
-                self.progress_store.update(download_id, state='downloading', progress=round(pct, 1), filename=fname)
+            saved_files.append((target_file, fname))
+            pct = 30.0 + (65.0 * (i + 1) / len(targets))
+            self.progress_store.update(download_id, state='downloading', progress=round(pct, 1), filename=fname)
 
-            last_path, last_name = saved_files[0]
-            self.progress_store.update(
-                download_id, 
-                state='complete', 
-                progress=100.0, 
-                filepath=last_path, 
-                filename=last_name if len(saved_files) == 1 else f"{len(saved_files)} items downloaded"
-            )
+        last_path, last_name = saved_files[0]
+        self.progress_store.update(
+            download_id, 
+            state='complete', 
+            progress=100.0, 
+            filepath=last_path, 
+            filename=last_name if len(saved_files) == 1 else f"{len(saved_files)} items downloaded"
+        )
