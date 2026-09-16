@@ -174,11 +174,13 @@ async function pollDownloadStatus(downloadId, token, tabId) {
 async function getCookiesForUrl(url) {
   if (!chrome.cookies || !chrome.cookies.getAll) return null;
   try {
-    let domain = 'instagram.com';
-    if (url && url.includes('youtube.com')) domain = 'youtube.com';
-    else if (url && url.includes('pinterest.com')) domain = 'pinterest.com';
-    const cookies = await chrome.cookies.getAll({ domain });
-    return (cookies && cookies.length > 0) ? cookies : null;
+    // Strictly Instagram only: Instagram requires session cookies for 18+ and stories.
+    // YouTube anti-bot defense rejects Chrome browser session cookies with "The page needs to be reloaded".
+    if (url && (url.includes('instagram.com') || url.includes('instagr.am'))) {
+      const cookies = await chrome.cookies.getAll({ domain: 'instagram.com' });
+      return (cookies && cookies.length > 0) ? cookies : null;
+    }
+    return null;
   } catch (e) {
     return null;
   }

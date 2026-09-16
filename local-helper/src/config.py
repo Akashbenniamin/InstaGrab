@@ -58,28 +58,45 @@ class Config:
                 pass
             return path
 
-    def get_cookie_file_path(self):
+    def get_cookie_file_path(self, platform='instagram'):
         with self.lock:
-            # First check if user dropped a custom cookies.txt in their download path
+            # Only provide cookies for instagram authentication (18+, stories, highlights).
+            # Passing browser cookies to YouTube triggers "The page needs to be reloaded" bot detection.
+            if platform != 'instagram':
+                return None
+
             dl_path = self.settings.get('download_path')
+            
+            # Check dedicated instagram_cookies.txt
+            ig_cookies = os.path.join(self.config_dir, 'instagram_cookies.txt')
+            if os.path.exists(ig_cookies) and os.path.getsize(ig_cookies) > 10:
+                return ig_cookies
+
+            # Check appdata config dir cookies.txt (only if it contains instagram cookies)
+            appdata_cookies = os.path.join(self.config_dir, 'cookies.txt')
+            if os.path.exists(appdata_cookies) and os.path.getsize(appdata_cookies) > 10:
+                try:
+                    with open(appdata_cookies, 'r', encoding='utf-8', errors='ignore') as f:
+                        if 'instagram.com' in f.read():
+                            return appdata_cookies
+                except Exception:
+                    pass
+
+            # Check if user dropped a custom cookies.txt in their download path
             if dl_path:
                 custom_path = os.path.join(dl_path, 'cookies.txt')
                 if os.path.exists(custom_path) and os.path.getsize(custom_path) > 10:
                     return custom_path
             
-            # Check appdata config dir
-            appdata_cookies = os.path.join(self.config_dir, 'cookies.txt')
-            if os.path.exists(appdata_cookies) and os.path.getsize(appdata_cookies) > 10:
-                return appdata_cookies
             return None
 
-    def save_netscape_cookies(self, cookies_list):
+    def save_netscape_cookies(self, cookies_list, platform='instagram'):
         if not cookies_list:
             return False
         import time
         lines = [
             "# Netscape HTTP Cookie File",
-            "# Auto-synced by InstaGrab Extension for 18+ / authenticated reels",
+            f"# Auto-synced by InstaGrab Extension for {platform} authentication",
             "# https://curl.haxx.se/rfc/cookie_spec.html",
             ""
         ]
@@ -108,9 +125,17 @@ class Config:
         with self.lock:
             try:
                 os.makedirs(self.config_dir, exist_ok=True)
-                cookie_path = os.path.join(self.config_dir, 'cookies.txt')
+                # Save to dedicated platform file
+                plat_file = 'instagram_cookies.txt' if platform == 'instagram' else f"{platform}_cookies.txt"
+                cookie_path = os.path.join(self.config_dir, plat_file)
                 with open(cookie_path, 'w', encoding='utf-8') as f:
                     f.write('\n'.join(lines) + '\n')
+                
+                # Also save to cookies.txt if instagram
+                if platform == 'instagram':
+                    legacy_path = os.path.join(self.config_dir, 'cookies.txt')
+                    with open(legacy_path, 'w', encoding='utf-8') as f:
+                        f.write('\n'.join(lines) + '\n')
                 return True
             except Exception as e:
                 print(f"[InstaGrab Config] Error saving cookies: {e}")

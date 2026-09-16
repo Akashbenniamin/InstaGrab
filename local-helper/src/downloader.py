@@ -68,13 +68,19 @@ class Downloader:
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
-        cookie_file = self.config.get_cookie_file_path()
-        if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
-        elif self.config.get('use_browser_cookies'):
-            browser = self.config.get('browser_for_cookies')
-            if browser:
-                ydl_opts['cookiesfrombrowser'] = (browser,)
+        import shutil
+        node_path = shutil.which('node')
+        if node_path:
+            ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
+
+        if platform == 'instagram':
+            cookie_file = self.config.get_cookie_file_path('instagram')
+            if cookie_file:
+                ydl_opts['cookiefile'] = cookie_file
+            elif self.config.get('use_browser_cookies'):
+                browser = self.config.get('browser_for_cookies')
+                if browser:
+                    ydl_opts['cookiesfrombrowser'] = (browser,)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -332,13 +338,20 @@ class Downloader:
                     'bestvideo+bestaudio/best'
                 )
 
-        cookie_file = self.config.get_cookie_file_path()
-        if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
-        elif self.config.get('use_browser_cookies'):
-            browser = self.config.get('browser_for_cookies')
-            if browser:
-                ydl_opts['cookiesfrombrowser'] = (browser,)
+        import shutil
+        node_path = shutil.which('node')
+        if node_path:
+            ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
+
+        is_valid, _, platform = validate_media_url(url)
+        if platform == 'instagram':
+            cookie_file = self.config.get_cookie_file_path('instagram')
+            if cookie_file:
+                ydl_opts['cookiefile'] = cookie_file
+            elif self.config.get('use_browser_cookies'):
+                browser = self.config.get('browser_for_cookies')
+                if browser:
+                    ydl_opts['cookiesfrombrowser'] = (browser,)
 
         try:
             self.progress_store.update(download_id, state='extracting')
@@ -419,6 +432,45 @@ class Downloader:
                     self.progress_store.update(download_id, state='complete', progress=100.0, filepath=target_path, filename=target_filename)
         except Exception as e:
             err_str = str(e)
+
+            # Check if YouTube encountered bot block or "The page needs to be reloaded"
+            if ('youtube.' in url.lower() or 'youtu.be' in url.lower()) and any(x in err_str.lower() for x in ['page needs to be reloaded', 'confirm you’re not a bot', 'confirm you are not a bot', 'sign in to confirm']):
+                try:
+                    self.progress_store.update(download_id, state='extracting', filename='Retrying with YouTube mobile client...')
+                    retry_opts = dict(ydl_opts)
+                    retry_opts.pop('cookiefile', None)
+                    retry_opts.pop('cookiesfrombrowser', None)
+                    retry_opts['extractor_args'] = {'youtube': {'player_client': ['ios', 'android', 'web']}}
+                    with yt_dlp.YoutubeDL(retry_opts) as retry_ydl:
+                        info = retry_ydl.extract_info(url, download=True)
+                        filepath = retry_ydl.prepare_filename(info)
+                        if format_type == 'audio':
+                            base_no_ext, _ = os.path.splitext(filepath)
+                            mp3_filepath = base_no_ext + '.mp3'
+                            if os.path.exists(mp3_filepath):
+                                filepath = mp3_filepath
+                        if not os.path.exists(filepath):
+                            candidates = [os.path.join(job_temp_dir, f) for f in os.listdir(job_temp_dir) if not f.endswith('.part') and not f.endswith('.ytdl') and not f.startswith('.')]
+                            if candidates:
+                                filepath = max(candidates, key=os.path.getsize)
+                        if os.path.exists(filepath):
+                            if format_type != 'audio' and filepath.lower().endswith('.mp4'):
+                                filepath = self._ensure_h264_compatible(filepath, ffmpeg_dir)
+                            desired_filename = os.path.basename(filepath)
+                            target_path = os.path.join(base_path, desired_filename)
+                            target_filename = desired_filename
+                            if os.path.exists(target_path):
+                                try:
+                                    os.remove(target_path)
+                                except Exception:
+                                    pass
+                            import shutil
+                            shutil.move(filepath, target_path)
+                            self.progress_store.update(download_id, state='complete', progress=100.0, filepath=target_path, filename=target_filename)
+                            return
+                except Exception as retry_err:
+                    err_str = f"YouTube download error: {str(retry_err)}"
+
             # Check if this is an Instagram photo or carousel where yt-dlp finds no video formats
             if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and any(x in err_str.lower() for x in ['no video', 'requested format is not available', 'unable to extract', 'no media', "there's no video"]):
                 try:

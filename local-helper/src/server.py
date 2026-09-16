@@ -177,7 +177,8 @@ def create_app(config, downloader, token_manager):
         if not cookies_list:
             return jsonify({'error': 'No cookies provided'}), 400
         
-        saved = config.save_netscape_cookies(cookies_list)
+        platform = data.get('platform', 'instagram')
+        saved = config.save_netscape_cookies(cookies_list, platform=platform)
         if saved:
             return jsonify({'success': True, 'count': len(cookies_list)})
         return jsonify({'error': 'Failed to save cookies'}), 500
@@ -194,16 +195,16 @@ def create_app(config, downloader, token_manager):
         if not url:
             return jsonify({'error': 'URL required'}), 400
 
-        # Auto-sync cookies if provided with download request
-        if data.get('cookies'):
-            try:
-                config.save_netscape_cookies(data.get('cookies'))
-            except Exception:
-                pass
-
         is_valid, err_msg, platform = validate_media_url(url)
         if not is_valid:
             return jsonify({'error': err_msg}), 400
+
+        # Auto-sync cookies if provided with download request (strictly Instagram only)
+        if data.get('cookies') and platform == 'instagram':
+            try:
+                config.save_netscape_cookies(data.get('cookies'), platform='instagram')
+            except Exception:
+                pass
 
         # Canonical normalization for Instagram URLs
         if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
