@@ -46,11 +46,11 @@ def validate_media_url(url: str) -> tuple[bool, str, str]:
     # 1. Instagram validation (Posts, Photos, Reels, TV, Stories, Highlights)
     if any(domain in netloc for domain in ['instagram.com', 'instagr.am']):
         # Stories & Highlights
-        if re.search(r'/stories/([^/?#]+)(?:/(\d+))?', parsed.path) or re.search(r'/s/([A-Za-z0-9_-]+)', parsed.path):
+        if re.search(r'/stories/([^/?#]+)(?:/(\d+))?/?$', parsed.path) or re.search(r'/s/([A-Za-z0-9_-]+)/?$', parsed.path):
             return True, "", "instagram"
 
         # Posts, Photos, Reels, TV
-        match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', parsed.path)
+        match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)/?$', parsed.path)
         if match:
             shortcode = match.group(1)
             if len(shortcode) >= 3:

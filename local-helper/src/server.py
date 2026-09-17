@@ -216,8 +216,15 @@ def create_app(config, downloader, token_manager):
             
         format_type = data.get('format_type', 'video')
         quality = data.get('quality', 'best')
+        item_index = data.get('item_index')
+        if item_index is not None:
+            try:
+                item_index = int(item_index)
+            except Exception:
+                item_index = None
+        as_zip = bool(data.get('as_zip', True))
         download_id = 'dl_' + generate_token(12)
-        downloader.start_download(url, download_id, format_type=format_type, quality=quality)
+        downloader.start_download(url, download_id, format_type=format_type, quality=quality, item_index=item_index, as_zip=as_zip)
         return jsonify({'downloadId': download_id}), 202
 
     @app.route('/api/download/<download_id>/status', methods=['GET', 'OPTIONS'])
@@ -512,6 +519,16 @@ def create_app(config, downloader, token_manager):
                     match_file = os.path.join(download_path, f)
                     if os.path.isfile(match_file):
                         return send_file(match_file, as_attachment=True, download_name=f)
+
+        # Fallback for legacy "items downloaded" or missing files: find most recently modified file in download_path
+        if "items downloaded" in filename.lower() and os.path.isdir(download_path):
+            try:
+                candidates = [os.path.join(download_path, f) for f in os.listdir(download_path) if os.path.isfile(os.path.join(download_path, f))]
+                if candidates:
+                    latest_file = max(candidates, key=os.path.getmtime)
+                    return send_file(latest_file, as_attachment=True, download_name=os.path.basename(latest_file))
+            except Exception:
+                pass
 
         return jsonify({'error': 'File not found'}), 404
 

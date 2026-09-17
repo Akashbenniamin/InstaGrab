@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film, ChevronLeft, ChevronRight } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 import { validateMediaUrl } from '../services/urlValidator';
+import { CarouselMediaItem } from '../types';
 
 interface Props {
   url: string;
-  onMediaDetected?: (info: { mediaType?: string; contentType?: string; title?: string }) => void;
+  onMediaDetected?: (info: { 
+    mediaType?: string; 
+    contentType?: string; 
+    title?: string;
+    carouselMedia?: CarouselMediaItem[];
+    itemCount?: number;
+  }) => void;
 }
 
 export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
@@ -17,15 +24,19 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     platform?: string;
     playable_url?: string | null;
     media_type?: string;
+    carousel_media?: CarouselMediaItem[];
+    item_count?: number;
   } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [ytId, setYtId] = useState<string | null>(null);
   const [detectedContentType, setDetectedContentType] = useState<string | undefined>(undefined);
+  const [activeSlide, setActiveSlide] = useState(0);
 
   useEffect(() => {
     setIsPlaying(false);
+    setActiveSlide(0);
     const trimmed = url.trim();
     if (!trimmed) {
       setInfo(null);
@@ -75,6 +86,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     helperApi.getMediaInfo(trimmed).then(res => {
       if (!isCancelled && res && !res.error) {
         const resolvedMediaType = res.media_type || (val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : 'video')));
+        setActiveSlide(0);
         setInfo(prev => ({
           ...prev,
           title: res.title || prev?.title || 'Media Post',
@@ -83,14 +95,18 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
           uploader: res.uploader,
           platform: res.platform || val.platform,
           playable_url: res.playable_url,
-          media_type: resolvedMediaType
+          media_type: resolvedMediaType,
+          carousel_media: res.carousel_media,
+          item_count: res.item_count
         }));
 
         if (onMediaDetected) {
           onMediaDetected({
             mediaType: resolvedMediaType,
             contentType: val.contentType,
-            title: res.title
+            title: res.title,
+            carouselMedia: res.carousel_media,
+            itemCount: res.item_count
           });
         }
       }
@@ -164,7 +180,10 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     return null;
   };
 
-  const isPhoto = info?.media_type === 'photo';
+  const hasCarousel = !!(info?.carousel_media && info.carousel_media.length > 1);
+  const currentSlideItem = hasCarousel ? info!.carousel_media![activeSlide] : null;
+  const displayThumbnail = currentSlideItem?.thumbnail || info?.thumbnail;
+  const isPhoto = currentSlideItem ? (currentSlideItem.media_type === 'photo') : (info?.media_type === 'photo');
 
   // Blank placeholder state
   if (!url.trim() || (!info?.thumbnail && !loading)) {
@@ -206,10 +225,10 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
           )
         ) : (
           <>
-            {info?.thumbnail ? (
+            {displayThumbnail ? (
               <img
-                src={info.thumbnail}
-                alt={info.title || 'Media thumbnail'}
+                src={displayThumbnail}
+                alt={info?.title || 'Media thumbnail'}
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   if (ytId && e.currentTarget.src.includes('maxresdefault')) {
@@ -240,19 +259,70 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
             )}
 
             {/* Auto-recognized Media Type Badge */}
-            <div className="absolute top-2 right-2">
+            <div className="absolute top-2 right-2 z-10">
               {getMediaBadge()}
             </div>
 
+            {/* Carousel Previous / Next Arrows and Slide Counter */}
+            {hasCarousel && info?.carousel_media && (
+              <>
+                <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-xs text-white text-[10px] font-mono font-bold">
+                  {activeSlide + 1} / {info.carousel_media.length}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveSlide(prev => (prev > 0 ? prev - 1 : info.carousel_media!.length - 1));
+                  }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-xs transition-transform active:scale-90 cursor-pointer shadow-md z-10"
+                  title="Previous slide"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveSlide(prev => (prev < info.carousel_media!.length - 1 ? prev + 1 : 0));
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-xs transition-transform active:scale-90 cursor-pointer shadow-md z-10"
+                  title="Next slide"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Dot Indicators */}
+                <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1 z-10">
+                  {info.carousel_media.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveSlide(i);
+                      }}
+                      className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                        i === activeSlide ? 'w-3.5 bg-white shadow-xs' : 'w-1.5 bg-white/50 hover:bg-white/80'
+                      }`}
+                      title={`Slide ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
             {/* Duration Badge */}
-            {info?.duration ? (
+            {!hasCarousel && info?.duration ? (
               <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/80 text-white text-[10px] font-mono font-bold tracking-tight">
                 {formatDuration(info.duration)}
               </span>
             ) : null}
 
             {loading && (
-              <div className="absolute top-2 left-2 p-1 rounded-md bg-black/60 backdrop-blur-xs text-white">
+              <div className="absolute top-2 left-2 p-1 rounded-md bg-black/60 backdrop-blur-xs text-white z-20">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               </div>
             )}

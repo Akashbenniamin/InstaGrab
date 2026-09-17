@@ -27,11 +27,11 @@ class Downloader:
         self.active_downloads = {}
         self.active_downloads_lock = threading.Lock()
 
-    def start_download(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best') -> None:
+    def start_download(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True) -> None:
         self.progress_store.create(download_id)
         thread = threading.Thread(
             target=self._download_thread,
-            args=(url, download_id, format_type, quality),
+            args=(url, download_id, format_type, quality, item_index, as_zip),
             daemon=True
         )
         thread.start()
@@ -122,6 +122,19 @@ class Downloader:
                     if thumb_list:
                         thumbnail = thumb_list[-1].get('url') or thumb_list[0].get('url')
 
+                carousel_media = []
+                item_count = 1
+                if platform == 'instagram' and (media_type == 'carousel' or '/p/' in url or '/share/p/' in url):
+                    try:
+                        ig_info = self._fetch_instagram_post_info(url)
+                        if ig_info:
+                            carousel_media = ig_info.get('carousel_media', [])
+                            item_count = ig_info.get('item_count', 1)
+                            if ig_info.get('media_type') == 'carousel':
+                                media_type = 'carousel'
+                    except Exception:
+                        pass
+
                 return {
                     'title': title,
                     'thumbnail': thumbnail,
@@ -130,6 +143,8 @@ class Downloader:
                     'platform': platform,
                     'playable_url': playable_url,
                     'media_type': media_type,
+                    'carousel_media': carousel_media,
+                    'item_count': item_count,
                 }
         except Exception as e:
             err_str = str(e)
@@ -146,6 +161,8 @@ class Downloader:
                             'platform': 'instagram',
                             'playable_url': ig_info.get('playable_url'),
                             'media_type': ig_info.get('media_type', 'photo'),
+                            'carousel_media': ig_info.get('carousel_media', []),
+                            'item_count': ig_info.get('item_count', 1),
                         }
                 except Exception:
                     pass
@@ -197,7 +214,7 @@ class Downloader:
         except Exception as e:
             return False, str(e)
 
-    def _download_thread(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best'):
+    def _download_thread(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True):
         is_valid, err_msg, platform = validate_media_url(url)
         if not is_valid:
             self.progress_store.update(download_id, state='error', error=err_msg, errorType='unknown')
@@ -209,6 +226,17 @@ class Downloader:
                 shortcode = match.group(1)
                 content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
                 url = f"https://www.instagram.com/{content_type}/{shortcode}/"
+
+        base_path = self.config.get_download_path()
+
+        # If a specific carousel item index was explicitly requested, download it directly via native extractor
+        if platform == 'instagram' and item_index is not None:
+            try:
+                self._download_instagram_photo_or_carousel(url, download_id, base_path, item_index=item_index, as_zip=False)
+                return
+            except Exception as e:
+                self.progress_store.update(download_id, state='error', error=f"Download failed: {str(e)}", errorType='unknown')
+                return
 
         with self.active_downloads_lock:
             self.active_downloads[download_id] = {'cancel': False}
@@ -491,7 +519,7 @@ class Downloader:
             # Check if this is an Instagram photo, carousel, or post where yt-dlp finds no video formats or fails
             if 'instagram.' in url.lower() or 'instagr.am' in url.lower():
                 try:
-                    self._download_instagram_photo_or_carousel(url, download_id, base_path)
+                    self._download_instagram_photo_or_carousel(url, download_id, base_path, item_index=item_index, as_zip=as_zip)
                     return
                 except Exception as ig_err:
                     err_str = f"Instagram download failed: {str(ig_err)}"
@@ -777,29 +805,52 @@ class Downloader:
         uploader = item.get('user', {}).get('username') or 'instagram_user'
 
         targets = []
+        carousel_media = []
         item_type = item.get('media_type')
         playable_url = None
 
         if item_type == 8 and item.get('carousel_media'):
             media_type = 'carousel'
             for idx, slide in enumerate(item['carousel_media']):
-                if slide.get('video_versions'):
+                is_vid = bool(slide.get('video_versions'))
+                if is_vid:
                     v_url = slide['video_versions'][0]['url']
-                    targets.append((v_url, True, f"{safe_title}_{idx+1}.mp4"))
+                    thumb = slide.get('image_versions2', {}).get('candidates', [{}])[0].get('url', v_url)
+                    fname = f"{safe_title}_{idx+1}.mp4"
+                    targets.append((v_url, True, fname, thumb))
                     if not playable_url:
                         playable_url = v_url
                 elif slide.get('image_versions2', {}).get('candidates'):
                     img_url = slide['image_versions2']['candidates'][0]['url']
-                    targets.append((img_url, False, f"{safe_title}_{idx+1}.jpg"))
+                    thumb = img_url
+                    fname = f"{safe_title}_{idx+1}.jpg"
+                    targets.append((img_url, False, fname, thumb))
+                else:
+                    continue
+
+                w = slide.get('original_width') or (slide['video_versions'][0].get('width') if is_vid else slide['image_versions2']['candidates'][0].get('width', 1080))
+                h = slide.get('original_height') or (slide['video_versions'][0].get('height') if is_vid else slide['image_versions2']['candidates'][0].get('height', 1080))
+                carousel_media.append({
+                    'index': idx + 1,
+                    'media_type': 'video' if is_vid else 'photo',
+                    'thumbnail': thumb,
+                    'url': targets[-1][0],
+                    'filename': fname,
+                    'width': w,
+                    'height': h
+                })
         elif item.get('video_versions'):
             media_type = 'video'
             v_url = item['video_versions'][0]['url']
             playable_url = v_url
-            targets.append((v_url, True, f"{safe_title}.mp4"))
+            fname = f"{safe_title}.mp4"
+            thumb = item.get('image_versions2', {}).get('candidates', [{}])[0].get('url', v_url)
+            targets.append((v_url, True, fname, thumb))
         elif item.get('image_versions2', {}).get('candidates'):
             media_type = 'photo'
             img_url = item['image_versions2']['candidates'][0]['url']
-            targets.append((img_url, False, f"{safe_title}.jpg"))
+            fname = f"{safe_title}.jpg"
+            targets.append((img_url, False, fname, img_url))
         else:
             raise Exception("No photos or videos found in this Instagram post")
 
@@ -817,20 +868,31 @@ class Downloader:
             'platform': 'instagram',
             'playable_url': playable_url,
             'media_type': media_type,
-            'targets': targets
+            'targets': targets,
+            'carousel_media': carousel_media,
+            'item_count': len(carousel_media) if carousel_media else 1
         }
 
-    def _download_instagram_photo_or_carousel(self, url: str, download_id: str, base_path: str):
+    def _download_instagram_photo_or_carousel(self, url: str, download_id: str, base_path: str, item_index: int = None, as_zip: bool = True):
         import urllib.request
+        import zipfile
         import os
+        import re
 
-        self.progress_store.update(download_id, state='extracting', progress=15.0, filename="Fetching Instagram photos...")
+        self.progress_store.update(download_id, state='extracting', progress=15.0, filename="Fetching Instagram media...")
 
         post_info = self._fetch_instagram_post_info(url)
-        targets = post_info.get('targets', [])
+        all_targets = post_info.get('targets', [])
 
-        if not targets:
+        if not all_targets:
             raise Exception("No photos or media streams found in this Instagram post")
+
+        # Handle individual item selection (1-based index)
+        if item_index is not None and 1 <= item_index <= len(all_targets):
+            targets = [all_targets[item_index - 1]]
+            as_zip = False
+        else:
+            targets = all_targets
 
         self.progress_store.update(download_id, state='downloading', progress=30.0, filename=targets[0][2])
 
@@ -842,7 +904,11 @@ class Downloader:
         saved_files = []
         ffmpeg_dir = get_ffmpeg_dir()
 
-        for i, (media_url, is_vid, fname) in enumerate(targets):
+        for i, target in enumerate(targets):
+            media_url = target[0]
+            is_vid = target[1]
+            fname = target[2]
+
             target_file = os.path.join(base_path, fname)
             base_name, ext = os.path.splitext(fname)
             c = 1
@@ -864,14 +930,48 @@ class Downloader:
                     pass
 
             saved_files.append((target_file, fname))
-            pct = 30.0 + (65.0 * (i + 1) / len(targets))
+            pct = 30.0 + (55.0 * (i + 1) / len(targets))
             self.progress_store.update(download_id, state='downloading', progress=round(pct, 1), filename=fname)
 
+        if not saved_files:
+            raise Exception("Failed to save media files")
+
+        # Package as ZIP archive if requested and multiple files exist
+        if as_zip and len(saved_files) > 1:
+            self.progress_store.update(download_id, state='processing', progress=90.0, filename="Packaging ZIP album...")
+            safe_title = post_info.get('title', 'instagram_album')
+            safe_title = re.sub(r'[<>:"/\\|?*]', '_', safe_title)[:60].strip() or 'instagram_album'
+
+            zip_filename = f"{safe_title}.zip"
+            zip_path = os.path.join(base_path, zip_filename)
+            zc = 1
+            while os.path.exists(zip_path):
+                zip_filename = f"{safe_title} ({zc}).zip"
+                zip_path = os.path.join(base_path, zip_filename)
+                zc += 1
+
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for file_path, arc_name in saved_files:
+                    zf.write(file_path, arc_name)
+
+            self.progress_store.update(
+                download_id,
+                state='complete',
+                progress=100.0,
+                filepath=zip_path,
+                filename=zip_filename,
+                files=[zip_filename]
+            )
+            return
+
+        # Individual item or multiple files for one-by-one downloads
         last_path, last_name = saved_files[0]
+        all_filenames = [f[1] for f in saved_files]
         self.progress_store.update(
             download_id, 
             state='complete', 
             progress=100.0, 
             filepath=last_path, 
-            filename=last_name if len(saved_files) == 1 else f"{len(saved_files)} items downloaded"
+            filename=last_name,
+            files=all_filenames
         )

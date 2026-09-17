@@ -4,7 +4,7 @@ import { useHelperConnection } from './hooks/useHelperConnection';
 import { useDownload } from './hooks/useDownload';
 import { validateMediaUrl } from './services/urlValidator';
 import { getHistory, clearHistory } from './services/downloadHistory';
-import { HistoryEntry, FormatType, VideoQuality, AudioQuality } from './types';
+import { HistoryEntry, FormatType, VideoQuality, AudioQuality, CarouselMediaItem } from './types';
 
 import { Header } from './components/Header';
 import { UrlInput } from './components/UrlInput';
@@ -15,6 +15,7 @@ import { HelperStatus as HelperStatusComponent } from './components/HelperStatus
 import { SetupGuide } from './components/SetupGuide';
 import { DownloadHistory } from './components/DownloadHistory';
 import { MediaPreview } from './components/MediaPreview';
+import { CarouselGallery } from './components/CarouselGallery';
 import { MobileNotice } from './components/MobileNotice';
 import { SettingsModal } from './components/SettingsModal';
 import { BannerAd } from './components/BannerAd';
@@ -43,6 +44,7 @@ function App() {
   const [quickMode, setQuickMode] = useState(() => localStorage.getItem('insta_dl_quick_mode') === 'true');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [detectedMediaType, setDetectedMediaType] = useState<string | undefined>(undefined);
+  const [carouselMedia, setCarouselMedia] = useState<CarouselMediaItem[] | null>(null);
 
   useEffect(() => {
     setHistory(getHistory());
@@ -61,17 +63,19 @@ function App() {
     setUrlError('');
     if (!value.trim()) {
       setDetectedMediaType(undefined);
+      setCarouselMedia(null);
     } else {
       const val = validateMediaUrl(value.trim());
       if (val.valid) {
         setDetectedMediaType(val.contentType);
       } else {
         setDetectedMediaType(undefined);
+        setCarouselMedia(null);
       }
     }
   };
 
-  const handleDownload = async (overrideUrl?: string) => {
+  const handleDownload = async (overrideUrl?: string, options?: { itemIndex?: number; asZip?: boolean }) => {
     const inputUrl = (overrideUrl || url).trim();
     if (!status.connected) {
       setIsSetupOpen(true);
@@ -95,8 +99,21 @@ function App() {
 
     const targetUrl = normalized!;
     const quality = formatType === 'video' ? videoQuality : audioQuality;
+    const downloadOptions = options || (detectedMediaType === 'carousel' ? { asZip: true } : undefined);
 
-    await startDownload(targetUrl, formatType, quality);
+    await startDownload(targetUrl, formatType, quality, downloadOptions);
+  };
+
+  const handleDownloadItem = (itemIndex: number) => {
+    handleDownload(undefined, { itemIndex });
+  };
+
+  const handleDownloadAllZip = () => {
+    handleDownload(undefined, { asZip: true });
+  };
+
+  const handleDownloadAllOneByOne = () => {
+    handleDownload(undefined, { asZip: false });
   };
 
   const handlePasteText = (pastedText: string) => {
@@ -173,6 +190,7 @@ function App() {
                         loading={isSubmitting}
                         formatType={formatType}
                         mediaType={detectedMediaType}
+                        carouselCount={carouselMedia?.length}
                       />
 
                       {/* Revamped Quick Mode Switch Tile */}
@@ -227,12 +245,28 @@ function App() {
                   <div className="md:col-span-5 flex flex-col">
                     <MediaPreview 
                       url={url} 
-                      onMediaDetected={({ mediaType }) => {
+                      onMediaDetected={({ mediaType, carouselMedia: detectedCarousel }) => {
                         if (mediaType) setDetectedMediaType(mediaType);
+                        if (detectedCarousel && detectedCarousel.length > 0) {
+                          setCarouselMedia(detectedCarousel);
+                        } else {
+                          setCarouselMedia(null);
+                        }
                       }}
                     />
                   </div>
                 </div>
+
+                {/* Carousel Media Cards Gallery */}
+                {carouselMedia && carouselMedia.length > 0 && (
+                  <CarouselGallery
+                    items={carouselMedia}
+                    onDownloadItem={handleDownloadItem}
+                    onDownloadAllZip={handleDownloadAllZip}
+                    onDownloadAllImages={handleDownloadAllOneByOne}
+                    isDownloading={isSubmitting}
+                  />
+                )}
 
                 {/* 3. Engine Status Banner */}
                 <div className="pt-1">

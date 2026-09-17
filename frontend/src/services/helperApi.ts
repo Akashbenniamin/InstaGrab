@@ -1,4 +1,4 @@
-import { HelperHealthResponse, HelperStatusResponse, HelperDownloadResponse } from '../types';
+import { HelperHealthResponse, HelperStatusResponse, HelperDownloadResponse, MediaInfo } from '../types';
 
 class HelperApi {
   private baseUrl = 'http://127.0.0.1:18765';
@@ -103,15 +103,28 @@ class HelperApi {
     throw new Error('No token received');
   }
 
-  async startDownload(url: string, formatType: string = 'video', quality: string = 'best'): Promise<string> {
+  async startDownload(
+    url: string, 
+    formatType: string = 'video', 
+    quality: string = 'best',
+    options?: { itemIndex?: number; asZip?: boolean }
+  ): Promise<string> {
+    const payload: Record<string, any> = { 
+      url,
+      format_type: formatType,
+      quality
+    };
+    if (options?.itemIndex !== undefined) {
+      payload.item_index = options.itemIndex;
+    }
+    if (options?.asZip !== undefined) {
+      payload.as_zip = options.asZip;
+    }
+
     let response = await fetch(`${this.baseUrl}/api/download`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ 
-        url,
-        format_type: formatType,
-        quality
-      })
+      body: JSON.stringify(payload)
     });
     
     // Auto-repair on 401/403 (token expired or invalidated)
@@ -122,11 +135,7 @@ class HelperApi {
         response = await fetch(`${this.baseUrl}/api/download`, {
           method: 'POST',
           headers: this.getHeaders(),
-          body: JSON.stringify({ 
-            url,
-            format_type: formatType,
-            quality
-          })
+          body: JSON.stringify(payload)
         });
       } catch {
         throw new Error('UNAUTHORIZED');
@@ -298,16 +307,7 @@ class HelperApi {
     }
   }
 
-  async getMediaInfo(url: string): Promise<{
-    title?: string;
-    thumbnail?: string;
-    duration?: number;
-    uploader?: string;
-    platform?: string;
-    playable_url?: string | null;
-    media_type?: string;
-    error?: string;
-  } | null> {
+  async getMediaInfo(url: string): Promise<MediaInfo | null> {
     try {
       const response = await fetch(`${this.baseUrl}/api/info`, {
         method: 'POST',

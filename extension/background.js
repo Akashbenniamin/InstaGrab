@@ -103,6 +103,7 @@ function broadcastProgress(data, tabId) {
 async function pollDownloadStatus(downloadId, token, tabId) {
   const startTime = Date.now();
   let completedFilename = null;
+  let completedFiles = null;
 
   while (Date.now() - startTime < 300000) { // 5 minute timeout for large files
     await new Promise(r => setTimeout(r, 650));
@@ -131,6 +132,7 @@ async function pollDownloadStatus(downloadId, token, tabId) {
 
         if (status.state === 'complete') {
           completedFilename = status.filename;
+          completedFiles = status.files;
           break;
         } else if (status.state === 'error') {
           currentDownload = {
@@ -150,8 +152,28 @@ async function pollDownloadStatus(downloadId, token, tabId) {
     }
   }
 
-  // Hand-off completed file to native Chrome / Browser Download Manager
-  if (completedFilename) {
+  // Hand-off completed file(s) to native Chrome / Browser Download Manager
+  if (completedFiles && completedFiles.length > 1) {
+    for (let i = 0; i < completedFiles.length; i++) {
+      const f = completedFiles[i];
+      const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(f)}?token=${token}`;
+      await triggerBrowserDownload(streamUrl, f);
+      await new Promise(r => setTimeout(r, 350));
+    }
+
+    currentDownload = {
+      downloadId,
+      state: 'complete',
+      progress: 100,
+      filename: `${completedFiles.length} files saved`
+    };
+
+    broadcastProgress(currentDownload, tabId);
+
+    setTimeout(() => {
+      if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
+    }, 10000);
+  } else if (completedFilename) {
     const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(completedFilename)}?token=${token}`;
     await triggerBrowserDownload(streamUrl, completedFilename);
 
@@ -213,7 +235,7 @@ async function syncCookiesToHelper(domain = 'instagram.com') {
 }
 
 // Asynchronous start download job with immediate handshake
-async function startDownload(url, formatType, quality, tabId = null) {
+async function startDownload(url, formatType, quality, tabId = null, options = {}) {
   url = normalizeMediaUrl(url);
 
   // Fallback to active tab ID if triggered from popup
@@ -244,8 +266,12 @@ async function startDownload(url, formatType, quality, tabId = null) {
     const downloadPayload = {
       url: url,
       format_type: formatType || 'video',
-      quality: quality || 'best'
+      quality: quality || 'best',
+      as_zip: options.as_zip !== undefined ? options.as_zip : true
     };
+    if (options.item_index !== undefined) {
+      downloadPayload.item_index = options.item_index;
+    }
     if (cookies) downloadPayload.cookies = cookies;
 
     let resp = await fetch(`${HELPER_BASE}/api/download`, {

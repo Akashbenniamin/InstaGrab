@@ -6,6 +6,29 @@ export type AudioQuality = 'best' | '320k' | '192k' | '128k';
 export type QualityOption = VideoQuality | AudioQuality;
 export type PlatformType = 'instagram' | 'youtube' | 'pinterest' | 'unknown';
 
+export interface CarouselMediaItem {
+  index: number;
+  media_type: 'photo' | 'video';
+  thumbnail: string;
+  url?: string;
+  filename?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface MediaInfo {
+  title?: string;
+  thumbnail?: string;
+  duration?: number;
+  uploader?: string;
+  platform?: string;
+  playable_url?: string | null;
+  media_type?: string;
+  carousel_media?: CarouselMediaItem[];
+  item_count?: number;
+  error?: string;
+}
+
 export interface DownloadProgress {
   id: string;
   state: DownloadState;
@@ -14,6 +37,7 @@ export interface DownloadProgress {
   eta?: string;
   filename?: string;
   filepath?: string;
+  files?: string[];
   error?: string;
   errorType?: 'invalid_url' | 'helper_offline' | 'private_content' | 'unsupported' | 'network' | 'instagram_changed' | 'unknown';
 }
@@ -56,6 +80,7 @@ export interface HelperStatusResponse {
   eta?: string;
   filename?: string;
   filepath?: string;
+  files?: string[];
   error?: string;
   errorType?: string;
 }

@@ -44,18 +44,28 @@ export function useDownload() {
 
               // If newly transitioned to complete/error, record to history
               if (['complete', 'error', 'cancelled'].includes(status.state) && !['complete', 'error', 'cancelled'].includes(item.state)) {
-                if (status.state === 'complete' && status.filename) {
+                if (status.state === 'complete' && (status.filename || (status.files && status.files.length > 0))) {
+                  const displayFilename = status.filename || (status.files ? status.files[0] : 'Downloaded Media');
                   addEntry({
                     id: job.id,
                     url: originalUrl,
-                    filename: status.filename,
+                    filename: displayFilename,
                     filepath: status.filepath,
                     timestamp: Date.now(),
                     success: true
                   });
 
-                  // Stream file directly to browser download manager (same as extension)
-                  helperApi.triggerBrowserDownload(status.filename);
+                  // Stream file(s) directly to browser download manager
+                  if (status.files && status.files.length > 1) {
+                    // Multiple files: stream sequentially with 350ms stagger
+                    status.files.forEach((fname, idx) => {
+                      setTimeout(() => {
+                        helperApi.triggerBrowserDownload(fname);
+                      }, idx * 350);
+                    });
+                  } else if (status.filename) {
+                    helperApi.triggerBrowserDownload(status.filename);
+                  }
 
                   // Automatically remove finished task from bottom section after 3.5 seconds
                   setTimeout(() => {
@@ -91,7 +101,12 @@ export function useDownload() {
     };
   }, [pollActiveDownloads]);
 
-  const startDownload = async (url: string, formatType: string = 'video', quality: string = 'best') => {
+  const startDownload = async (
+    url: string, 
+    formatType: string = 'video', 
+    quality: string = 'best',
+    options?: { itemIndex?: number; asZip?: boolean }
+  ) => {
     setIsSubmitting(true);
     const tempId = 'temp_' + Date.now();
     
@@ -100,13 +115,17 @@ export function useDownload() {
       id: tempId,
       state: 'validating',
       progress: 0,
-      filename: 'Initializing download...'
+      filename: options?.asZip 
+        ? 'Packaging carousel as ZIP...' 
+        : (options?.itemIndex !== undefined 
+          ? `Fetching slide #${options.itemIndex + 1}...` 
+          : 'Initializing download...')
     };
     
     setDownloads(prev => [newJob, ...prev]);
 
     try {
-      const downloadId = await helperApi.startDownload(url, formatType, quality);
+      const downloadId = await helperApi.startDownload(url, formatType, quality, options);
       urlMapRef.current.set(downloadId, url);
 
       setDownloads(prev => prev.map(d => d.id === tempId ? {

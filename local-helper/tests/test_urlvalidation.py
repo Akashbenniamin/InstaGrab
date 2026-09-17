@@ -12,7 +12,8 @@ def test_valid_instagram_urls():
         "https://www.instagram.com/explorewithepaphra/reel/DF-mGq-z_0Z/?igsh=MWQ1ZGUxMzBkMA==",
         "https://www.instagram.com/explorewithepaphra/reels/DF-mGq-z_0Z/",
         "https://www.instagram.com/reels/DF-mGq-z_0Z/",
-        "https://www.instagram.com/share/reel/DF-mGq-z_0Z/"
+        "https://www.instagram.com/share/reel/DF-mGq-z_0Z/",
+        "https://www.instagram.com/stories/username/12345/"
     ]
     for url in valid_urls:
         valid, msg, platform = validate_media_url(url)
@@ -52,7 +53,6 @@ def test_invalid_urls():
         "https://www.google.com",
         "",
         "https://www.instagram.com/username/", # Profile
-        "https://www.instagram.com/stories/username/12345/", # Stories
         "https://randomsite.com/instagram.com/reel/123",
         "https://www.instagram.com/reel/123/extra",
         "https://www.youtube.com/user/username",

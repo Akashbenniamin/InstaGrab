@@ -7,9 +7,10 @@ interface Props {
   loading: boolean;
   formatType?: FormatType;
   mediaType?: string;
+  carouselCount?: number;
 }
 
-export function DownloadButton({ onClick, disabled, loading, formatType = 'video', mediaType }: Props) {
+export function DownloadButton({ onClick, disabled, loading, formatType = 'video', mediaType, carouselCount }: Props) {
   const getButtonContent = () => {
     if (loading) {
       return (
@@ -42,7 +43,7 @@ export function DownloadButton({ onClick, disabled, loading, formatType = 'video
       return (
         <>
           <Layers className="w-5 h-5 mr-2" />
-          <span>Download Album / Carousel</span>
+          <span>Download All as .ZIP {carouselCount ? `(${carouselCount})` : ''}</span>
         </>
       );
     }
