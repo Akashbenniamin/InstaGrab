@@ -47,7 +47,11 @@ function App() {
   const [carouselMedia, setCarouselMedia] = useState<CarouselMediaItem[] | null>(null);
 
   useEffect(() => {
-    setHistory(getHistory());
+    try {
+      setHistory(getHistory());
+    } catch (e) {
+      console.warn('Failed to load history:', e);
+    }
   }, [downloads]); // Refresh history whenever downloads update
 
   const toggleQuickMode = () => {

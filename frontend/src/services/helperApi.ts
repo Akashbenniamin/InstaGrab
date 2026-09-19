@@ -263,10 +263,11 @@ class HelperApi {
 
   async triggerBrowserDownload(filename: string): Promise<boolean> {
     try {
+      if (!filename || typeof filename !== 'string') return false;
       const token = localStorage.getItem('insta_dl_token') || '';
       const streamUrl = `${this.baseUrl}/api/file/download/${encodeURIComponent(filename)}${token ? `?token=${token}` : ''}`;
 
-      // Primary: fetch as blob and trigger download via object URL (seamless browser download)
+      // 1. Primary: fetch as blob and trigger download via object URL (seamless browser download)
       try {
         const response = await fetch(streamUrl);
         if (response.ok) {
@@ -275,6 +276,8 @@ class HelperApi {
           const link = document.createElement('a');
           link.href = blobUrl;
           link.download = filename;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
           link.style.display = 'none';
           document.body.appendChild(link);
           link.click();
@@ -287,19 +290,43 @@ class HelperApi {
           return true;
         }
       } catch (blobErr) {
-        console.warn('Blob stream fallback:', blobErr);
+        console.warn('Blob stream fallback, attempting isolated frame:', blobErr);
       }
 
-      // Secondary fallback: direct anchor click
+      // 2. Safe Fallback: Hidden isolated iframe (NEVER navigates top window!)
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.top = '-9999px';
+        iframe.style.left = '-9999px';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0';
+        iframe.style.border = 'none';
+        iframe.src = streamUrl;
+        document.body.appendChild(iframe);
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe);
+          } catch {}
+        }, 30000);
+        return true;
+      } catch (frameErr) {
+        console.warn('Iframe download fallback failed:', frameErr);
+      }
+
+      // 3. Last resort fallback: target="_blank" anchor (opens in background tab, NEVER replaces current page!)
       const a = document.createElement('a');
       a.href = streamUrl;
       a.download = filename;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
         try { document.body.removeChild(a); } catch {}
-      }, 1000);
+      }, 2000);
       return true;
     } catch (e) {
       console.error('Failed to trigger browser download:', e);

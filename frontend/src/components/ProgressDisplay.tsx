@@ -17,9 +17,10 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
     await helperApi.openFile(filepath, filename);
   };
 
-  const formatSpeed = (speed?: string) => {
+  const formatSpeed = (speed?: any) => {
     if (!speed) return '';
-    return speed
+    const str = typeof speed === 'string' ? speed : String(speed);
+    return str
       .replace(/MiB\/s/gi, 'MB/s')
       .replace(/KiB\/s/gi, 'KB/s')
       .replace(/GiB\/s/gi, 'GB/s')
@@ -50,7 +51,8 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
         const isFailed = item.state === 'error';
         const isCancelled = item.state === 'cancelled';
         const isActive = !isComplete && !isFailed && !isCancelled;
-        const displayProgress = item.progress ?? 0;
+        const rawProgress = typeof item.progress === 'number' && !isNaN(item.progress) ? item.progress : 0;
+        const displayProgress = Math.max(0, Math.min(100, rawProgress));
 
         if (isFailed || isCancelled) {
           return (

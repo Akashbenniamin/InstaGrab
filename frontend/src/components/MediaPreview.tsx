@@ -119,10 +119,11 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     };
   }, [url]);
 
-  const formatDuration = (seconds?: number) => {
-    if (!seconds) return '';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
+  const formatDuration = (seconds?: any) => {
+    const num = Number(seconds);
+    if (!seconds || isNaN(num) || num <= 0) return '';
+    const mins = Math.floor(num / 60);
+    const secs = Math.floor(num % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
@@ -180,8 +181,9 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     return null;
   };
 
-  const hasCarousel = !!(info?.carousel_media && info.carousel_media.length > 1);
-  const currentSlideItem = hasCarousel ? info!.carousel_media![activeSlide] : null;
+  const hasCarousel = Boolean(info?.carousel_media && Array.isArray(info.carousel_media) && info.carousel_media.length > 1);
+  const safeSlideIndex = hasCarousel ? Math.max(0, Math.min(activeSlide, info!.carousel_media!.length - 1)) : 0;
+  const currentSlideItem = hasCarousel ? info!.carousel_media![safeSlideIndex] : null;
   const displayThumbnail = currentSlideItem?.thumbnail || info?.thumbnail;
   const isPhoto = currentSlideItem ? (currentSlideItem.media_type === 'photo') : (info?.media_type === 'photo');
 
@@ -267,7 +269,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
             {hasCarousel && info?.carousel_media && (
               <>
                 <span className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-xs text-white text-[10px] font-mono font-bold">
-                  {activeSlide + 1} / {info.carousel_media.length}
+                  {safeSlideIndex + 1} / {info.carousel_media.length}
                 </span>
 
                 <button
@@ -305,7 +307,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
                         setActiveSlide(i);
                       }}
                       className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                        i === activeSlide ? 'w-3.5 bg-white shadow-xs' : 'w-1.5 bg-white/50 hover:bg-white/80'
+                        i === safeSlideIndex ? 'w-3.5 bg-white shadow-xs' : 'w-1.5 bg-white/50 hover:bg-white/80'
                       }`}
                       title={`Slide ${i + 1}`}
                     />

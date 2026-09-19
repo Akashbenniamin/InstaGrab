@@ -10,88 +10,99 @@ export function useDownload() {
   // Track original URLs for each download ID
   const urlMapRef = useRef<Map<string, string>>(new Map());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isPollingRef = useRef(false);
+  const downloadsRef = useRef<DownloadProgress[]>([]);
+  downloadsRef.current = downloads;
+  const processedTerminalJobsRef = useRef<Set<string>>(new Set());
 
   const pollActiveDownloads = useCallback(async () => {
-    setDownloads(currentDownloads => {
-      // Find active downloads that need polling
-      const active = currentDownloads.filter(d => 
-        !['complete', 'error', 'cancelled'].includes(d.state) && !d.id.startsWith('temp_')
-      );
+    if (isPollingRef.current) return;
 
-      if (active.length === 0) return currentDownloads;
+    // Find active downloads that need polling from ref (pure read, outside setState)
+    const active = downloadsRef.current.filter(d => 
+      !['complete', 'error', 'cancelled'].includes(d.state) && !d.id.startsWith('temp_')
+    );
 
-      // Poll each active download asynchronously
-      active.forEach(async (job) => {
+    if (active.length === 0) return;
+
+    isPollingRef.current = true;
+    try {
+      for (const job of active) {
         try {
           const status = await helperApi.getDownloadStatus(job.id);
+          if (!status || !status.state) continue;
           const originalUrl = urlMapRef.current.get(job.id) || '';
 
+          // 1. Update job in state
           setDownloads(prevList => {
             return prevList.map(item => {
               if (item.id !== job.id) return item;
 
-              const updated: DownloadProgress = {
+              return {
                 ...item,
                 state: status.state,
-                progress: status.progress,
-                speed: status.speed,
-                eta: status.eta,
-                filename: status.filename,
-                filepath: status.filepath,
+                progress: typeof status.progress === 'number' && !isNaN(status.progress) ? status.progress : item.progress,
+                speed: status.speed || item.speed,
+                eta: status.eta || item.eta,
+                filename: status.filename || item.filename,
+                filepath: status.filepath || item.filepath,
                 error: status.error,
                 errorType: status.errorType as any
               };
-
-              // If newly transitioned to complete/error, record to history
-              if (['complete', 'error', 'cancelled'].includes(status.state) && !['complete', 'error', 'cancelled'].includes(item.state)) {
-                if (status.state === 'complete' && (status.filename || (status.files && status.files.length > 0))) {
-                  const displayFilename = status.filename || (status.files ? status.files[0] : 'Downloaded Media');
-                  addEntry({
-                    id: job.id,
-                    url: originalUrl,
-                    filename: displayFilename,
-                    filepath: status.filepath,
-                    timestamp: Date.now(),
-                    success: true
-                  });
-
-                  // Stream file(s) directly to browser download manager
-                  if (status.files && status.files.length > 1) {
-                    // Multiple files: stream sequentially with 350ms stagger
-                    status.files.forEach((fname, idx) => {
-                      setTimeout(() => {
-                        helperApi.triggerBrowserDownload(fname);
-                      }, idx * 350);
-                    });
-                  } else if (status.filename) {
-                    helperApi.triggerBrowserDownload(status.filename);
-                  }
-
-                  // Automatically remove finished task from bottom section after 3.5 seconds
-                  setTimeout(() => {
-                    setDownloads(current => current.filter(d => d.id !== job.id));
-                  }, 3500);
-                } else if (status.state === 'error') {
-                  addEntry({
-                    id: job.id,
-                    url: originalUrl,
-                    filename: status.filename || 'Failed Download',
-                    timestamp: Date.now(),
-                    success: false
-                  });
-                }
-              }
-
-              return updated;
             });
           });
-        } catch (err) {
-          console.error(`Failed to poll status for ${job.id}:`, err);
-        }
-      });
 
-      return currentDownloads;
-    });
+          // 2. Handle completion or error ONCE per job ID
+          if (['complete', 'error', 'cancelled'].includes(status.state) && !processedTerminalJobsRef.current.has(job.id)) {
+            processedTerminalJobsRef.current.add(job.id);
+
+            if (status.state === 'complete' && (status.filename || (status.files && status.files.length > 0))) {
+              const displayFilename = status.filename || (status.files ? status.files[0] : 'Downloaded Media');
+              try {
+                addEntry({
+                  id: job.id,
+                  url: originalUrl,
+                  filename: displayFilename,
+                  filepath: status.filepath,
+                  timestamp: Date.now(),
+                  success: true
+                });
+              } catch {}
+
+              // Stream file(s) directly to browser download manager safely
+              if (status.files && status.files.length > 1) {
+                status.files.forEach((fname, idx) => {
+                  setTimeout(() => {
+                    helperApi.triggerBrowserDownload(fname);
+                  }, idx * 400);
+                });
+              } else if (status.filename) {
+                helperApi.triggerBrowserDownload(status.filename);
+              }
+
+              // Automatically remove finished task from bottom queue after 4 seconds
+              setTimeout(() => {
+                setDownloads(current => current.filter(d => d.id !== job.id));
+              }, 4000);
+            } else if (status.state === 'error') {
+              try {
+                addEntry({
+                  id: job.id,
+                  url: originalUrl,
+                  filename: status.filename || 'Failed Download',
+                  timestamp: Date.now(),
+                  success: false
+                });
+              } catch {}
+            }
+          }
+        } catch (err) {
+          console.warn(`Polling error for ${job.id}:`, err);
+        }
+      }
+    } finally {
+      isPollingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
