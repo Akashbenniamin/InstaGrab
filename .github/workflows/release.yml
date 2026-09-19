@@ -51,3 +51,4 @@ jobs:
           generate_release_notes: true
           files: |
             local-helper/dist/InstaGrab-Helper-Setup*.exe
+            frontend/public/instagrab-extension.zip
