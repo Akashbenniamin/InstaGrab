@@ -59,6 +59,11 @@ export interface HistoryEntry {
   platform?: PlatformType;
   format?: FormatType;
   filepath?: string;
+  sizeFormatted?: string;
+  isAudio?: boolean;
+  isVideo?: boolean;
+  isImage?: boolean;
+  isZip?: boolean;
 }
 
 export interface HelperHealthResponse {

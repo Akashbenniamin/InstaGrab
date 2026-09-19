@@ -108,10 +108,12 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
                 <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] ${
                   isComplete ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
                 }`}>
-                  {item.state}
+                  {item.state === 'extracting' ? 'Extracting' : item.state === 'processing' ? 'Processing' : item.state}
                 </span>
-                {item.state === 'downloading' && (
-                  <span className="font-bold text-[var(--text-primary)]">{Math.round(displayProgress)}%</span>
+                {!isFailed && !isCancelled && (
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {isComplete ? '100%' : `${Math.round(displayProgress)}%`}
+                  </span>
                 )}
               </div>
 
@@ -142,7 +144,7 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
                 className={`h-full ${isComplete ? 'bg-green-500' : 'insta-gradient'} transition-all duration-300 ease-out`}
                 style={{ 
                   width: `${isComplete ? 100 : Math.max(5, displayProgress)}%`,
-                  ...(item.state !== 'downloading' && !isComplete ? {
+                  ...(item.state === 'validating' || item.state === 'connecting' ? {
                     animation: 'indeterminate 2s infinite linear',
                     backgroundSize: '200% 100%'
                   } : {})
@@ -150,9 +152,17 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
               />
             </div>
 
-            {/* Speed & ETA */}
+            {/* Speed & ETA / Stage Status */}
             <div className="flex justify-between text-[11px] text-[var(--text-secondary)]">
-              <div>{item.speed && <span>Speed: {formatSpeed(item.speed)}</span>}</div>
+              <div>
+                {item.speed ? (
+                  <span>{formatSpeed(item.speed)}</span>
+                ) : item.state === 'extracting' ? (
+                  <span>Extracting media metadata...</span>
+                ) : item.state === 'processing' ? (
+                  <span>Converting &amp; finalizing media...</span>
+                ) : null}
+              </div>
               <div>{item.eta && <span>ETA: {item.eta}</span>}</div>
             </div>
 

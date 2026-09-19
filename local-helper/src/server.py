@@ -270,6 +270,70 @@ def create_app(config, downloader, token_manager):
                     config.set(k, data[k])
             return jsonify(config.settings)
 
+    @app.route('/api/downloads/recent', methods=['GET', 'OPTIONS'])
+    def recent_downloads():
+        if request.method == 'OPTIONS':
+            return '', 204
+        download_path = config.get_download_path()
+        if not os.path.isdir(download_path):
+            return jsonify({'downloads': []})
+
+        recent = []
+        try:
+            entries = []
+            for fname in os.listdir(download_path):
+                if fname.startswith('.') or fname.endswith('.tmp') or fname.endswith('.part') or fname.endswith('.ytdl'):
+                    continue
+                fpath = os.path.join(download_path, fname)
+                if os.path.isfile(fpath):
+                    try:
+                        st = os.stat(fpath)
+                        entries.append((st.st_mtime, fname, fpath, st.st_size))
+                    except Exception:
+                        pass
+
+            entries.sort(key=lambda x: x[0], reverse=True)
+
+            for mtime, fname, fpath, size in entries[:50]:
+                is_audio = bool(fname.lower().endswith(('.mp3', '.m4a', '.wav', '.aac', '.flac', '.ogg')))
+                is_video = bool(fname.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi')))
+                is_img = bool(fname.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')))
+                is_zip = bool(fname.lower().endswith('.zip'))
+
+                if size < 1024 * 1024:
+                    size_fmt = f"{size / 1024:.1f} KB"
+                elif size < 1024 * 1024 * 1024:
+                    size_fmt = f"{size / (1024 * 1024):.1f} MB"
+                else:
+                    size_fmt = f"{size / (1024 * 1024 * 1024):.2f} GB"
+
+                platform = 'unknown'
+                if fname.startswith('Video by ') or 'instagram' in fname.lower():
+                    platform = 'instagram'
+                elif 'pinterest' in fname.lower():
+                    platform = 'pinterest'
+                elif is_audio or '[1080p]' in fname or '[720p]' in fname or '[Audio]' in fname:
+                    platform = 'youtube'
+
+                recent.append({
+                    'id': f"file_{int(mtime)}_{abs(hash(fname)) % 100000}",
+                    'filename': fname,
+                    'filepath': fpath,
+                    'size': size,
+                    'sizeFormatted': size_fmt,
+                    'timestamp': int(mtime * 1000),
+                    'platform': platform,
+                    'isAudio': is_audio,
+                    'isVideo': is_video,
+                    'isImage': is_img,
+                    'isZip': is_zip,
+                    'success': True
+                })
+        except Exception as e:
+            return jsonify({'error': str(e), 'downloads': []}), 500
+
+        return jsonify({'downloads': recent})
+
     class STARTUPINFOW(ctypes.Structure):
         _fields_ = [
             ('cb', wintypes.DWORD),

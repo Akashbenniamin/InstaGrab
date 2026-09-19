@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from './hooks/useTheme';
 import { useHelperConnection } from './hooks/useHelperConnection';
 import { useDownload } from './hooks/useDownload';
 import { validateMediaUrl } from './services/urlValidator';
-import { getHistory, clearHistory } from './services/downloadHistory';
+import { getHistory, clearHistory, mergeHelperHistory } from './services/downloadHistory';
+import { helperApi } from './services/helperApi';
 import { HistoryEntry, FormatType, VideoQuality, AudioQuality, CarouselMediaItem } from './types';
 
 import { Header } from './components/Header';
@@ -46,13 +47,34 @@ function App() {
   const [detectedMediaType, setDetectedMediaType] = useState<string | undefined>(undefined);
   const [carouselMedia, setCarouselMedia] = useState<CarouselMediaItem[] | null>(null);
 
-  useEffect(() => {
+  const refreshHistory = useCallback(async () => {
     try {
+      if (status.connected) {
+        const helperRecent = await helperApi.getRecentDownloads();
+        if (helperRecent && helperRecent.length > 0) {
+          const merged = mergeHelperHistory(helperRecent);
+          setHistory(merged);
+          return;
+        }
+      }
       setHistory(getHistory());
     } catch (e) {
-      console.warn('Failed to load history:', e);
+      setHistory(getHistory());
     }
-  }, [downloads]); // Refresh history whenever downloads update
+  }, [status.connected]);
+
+  useEffect(() => {
+    refreshHistory();
+
+    const handleUpdate = () => {
+      refreshHistory();
+    };
+
+    window.addEventListener('instagrab_history_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('instagrab_history_updated', handleUpdate);
+    };
+  }, [refreshHistory, downloads]);
 
   const toggleQuickMode = () => {
     setQuickMode(prev => {

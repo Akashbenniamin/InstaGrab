@@ -51,6 +51,11 @@ class Downloader:
         if not is_valid:
             return {'error': err_msg}
 
+        if platform == 'youtube':
+            yt_match = re.search(r'(?:youtube\.com/watch\?.*?v=|youtu\.be/)([A-Za-z0-9_-]{11})', url)
+            if yt_match:
+                url = f"https://www.youtube.com/watch?v={yt_match.group(1)}"
+
         if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
             match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
             if match:
@@ -63,6 +68,7 @@ class Downloader:
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'noplaylist': True,
         }
         ffmpeg_dir = get_ffmpeg_dir()
         if ffmpeg_dir:
@@ -220,6 +226,11 @@ class Downloader:
             self.progress_store.update(download_id, state='error', error=err_msg, errorType='unknown')
             return
 
+        if platform == 'youtube':
+            yt_match = re.search(r'(?:youtube\.com/watch\?.*?v=|youtu\.be/)([A-Za-z0-9_-]{11})', url)
+            if yt_match:
+                url = f"https://www.youtube.com/watch?v={yt_match.group(1)}"
+
         if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
             match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
             if match:
@@ -255,7 +266,7 @@ class Downloader:
                 if curr_file and curr_file not in seen_files:
                     seen_files.append(curr_file)
 
-                stream_idx = len(seen_files)  # 1 for video, 2 for audio
+                stream_idx = len(seen_files)  # 1 for video/audio, 2 for second stream if video+audio
 
                 pct_str = d.get('_percent_str', '0%').strip('\x1b[0;94m').strip('%')
                 try:
@@ -263,11 +274,15 @@ class Downloader:
                 except ValueError:
                     raw_pct = 0.0
 
-                # Map stream 1 to 0..85%, stream 2 to 85..96%
-                if stream_idx <= 1:
-                    mapped_pct = raw_pct * 0.85
+                if format_type == 'audio':
+                    # Single audio stream: map 0..90%
+                    mapped_pct = raw_pct * 0.90
                 else:
-                    mapped_pct = 85.0 + (raw_pct * 0.11)
+                    # Video stream: 0..80%, audio stream: 80..92%
+                    if stream_idx <= 1:
+                        mapped_pct = raw_pct * 0.80
+                    else:
+                        mapped_pct = 80.0 + (raw_pct * 0.12)
 
                 if mapped_pct > max_seen_pct[0]:
                     max_seen_pct[0] = mapped_pct
@@ -286,9 +301,30 @@ class Downloader:
             elif status == 'finished':
                 filename = os.path.basename(d.get('filename', ''))
                 filepath = d.get('filename', '')
-                self.progress_store.update(download_id, state='processing', progress=98.0, filename=filename, filepath=filepath)
+                post_pct = 92.0 if format_type == 'audio' else 94.0
+                if post_pct > max_seen_pct[0]:
+                    max_seen_pct[0] = post_pct
+                post_msg = 'Converting audio to MP3...' if format_type == 'audio' else 'Processing & muxing media...'
+                self.progress_store.update(download_id, state='processing', progress=round(max_seen_pct[0], 1), speed=post_msg, filename=filename, filepath=filepath)
             elif status == 'error':
                 self.progress_store.update(download_id, state='error', error='yt-dlp download error')
+
+        def my_pp_hook(d):
+            with self.active_downloads_lock:
+                if self.active_downloads.get(download_id, {}).get('cancel'):
+                    raise Exception("Download cancelled by user")
+
+            pp_status = d.get('status')
+            pp_name = str(d.get('postprocessor', ''))
+            if pp_status == 'started':
+                pp_msg = 'Converting audio to MP3...' if ('ExtractAudio' in pp_name or format_type == 'audio') else 'Muxing & finalizing video...'
+                cur_pct = max(max_seen_pct[0], 92.0)
+                max_seen_pct[0] = cur_pct
+                self.progress_store.update(download_id, state='processing', progress=round(cur_pct, 1), speed=pp_msg)
+            elif pp_status == 'finished':
+                cur_pct = max(max_seen_pct[0], 98.0)
+                max_seen_pct[0] = cur_pct
+                self.progress_store.update(download_id, state='processing', progress=round(cur_pct, 1), speed='Finalizing media file...')
 
         base_path = self.config.get_download_path()
         job_temp_dir = os.path.join(base_path, '.tmp', download_id)
@@ -315,7 +351,9 @@ class Downloader:
             'outtmpl': outtmpl,
             'overwrites': True,
             'windowsfilenames': True,
+            'noplaylist': True,
             'progress_hooks': [my_hook],
+            'postprocessor_hooks': [my_pp_hook],
             'quiet': True,
             'no_warnings': True,
         }
@@ -399,7 +437,7 @@ class Downloader:
                     ydl_opts['cookiesfrombrowser'] = (browser,)
 
         try:
-            self.progress_store.update(download_id, state='extracting')
+            self.progress_store.update(download_id, state='extracting', progress=5.0, speed='Fetching stream info...')
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 

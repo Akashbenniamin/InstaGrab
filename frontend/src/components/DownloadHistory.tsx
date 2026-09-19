@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { HistoryEntry } from '../types';
-import { Clock, CheckCircle2, XCircle, Trash2, FolderOpen, AlertCircle, Download } from 'lucide-react';
+import { Clock, Trash2, FolderOpen, AlertCircle, Download, Music, Video, Image as ImageIcon, Archive } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 
 interface Props {
@@ -37,6 +37,20 @@ export function DownloadHistory({ history, onClear }: Props) {
       setViewError('Could not open file in Explorer. Ensure Desktop Engine is running.');
       setTimeout(() => setViewError(null), 4000);
     }
+  };
+
+  const getMediaBadge = (entry: HistoryEntry) => {
+    const name = (entry.filename || '').toLowerCase();
+    if (entry.isAudio || name.endsWith('.mp3') || name.endsWith('.m4a') || name.includes('[audio]')) {
+      return { label: 'MP3', icon: <Music className="w-3 h-3 text-purple-500" />, color: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' };
+    }
+    if (entry.isZip || name.endsWith('.zip')) {
+      return { label: 'ZIP', icon: <Archive className="w-3 h-3 text-amber-500" />, color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' };
+    }
+    if (entry.isImage || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      return { label: 'IMG', icon: <ImageIcon className="w-3 h-3 text-emerald-500" />, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' };
+    }
+    return { label: 'MP4', icon: <Video className="w-3 h-3 text-blue-500" />, color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' };
   };
 
   return (
@@ -83,63 +97,80 @@ export function DownloadHistory({ history, onClear }: Props) {
         </div>
       ) : (
         <div className="max-h-[460px] lg:max-h-[calc(100vh-280px)] overflow-y-auto divide-y divide-[var(--border-color)] scrollbar-thin">
-          {history.map((entry) => (
-            <div 
-              key={entry.id} 
-              className="p-3.5 sm:px-4 sm:py-3.5 flex items-center justify-between gap-3 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors"
-            >
-              {/* Left: Status icon & Title Link */}
-              <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                {entry.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                ) : (
-                  <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <a
-                    href={entry.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold text-[var(--text-primary)] hover:underline truncate block cursor-pointer transition-colors"
-                    title={`Click to open source URL: ${entry.url}`}
+          {history.map((entry) => {
+            const media = getMediaBadge(entry);
+            return (
+              <div 
+                key={entry.id} 
+                className="p-3.5 sm:px-4 sm:py-3 flex items-center justify-between gap-3 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors"
+              >
+                {/* Left: Format badge & Title Link */}
+                <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${media.color}`} title={media.label}>
+                    {media.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {entry.url ? (
+                      <a
+                        href={entry.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-[var(--text-primary)] hover:underline truncate block cursor-pointer transition-colors"
+                        title={`Click to open source URL: ${entry.url}`}
+                      >
+                        {entry.filename || 'Untitled Download'}
+                      </a>
+                    ) : (
+                      <span 
+                        className="text-xs font-semibold text-[var(--text-primary)] truncate block"
+                        title={entry.filename}
+                      >
+                        {entry.filename || 'Untitled Download'}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)] mt-0.5">
+                      <span>{formatTime(entry.timestamp)}</span>
+                      {entry.sizeFormatted && (
+                        <>
+                          <span>•</span>
+                          <span className="font-medium">{entry.sizeFormatted}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Actions (Browser Download + File Explorer) */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {entry.success && entry.filename && (
+                    <button
+                      type="button"
+                      onClick={() => helperApi.triggerBrowserDownload(entry.filename)}
+                      style={{ color: 'var(--accent-color)' }}
+                      className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                      title="Download file to browser"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  <button 
+                    type="button"
+                    onClick={() => handleView(entry)}
+                    style={{ color: 'var(--accent-color)' }}
+                    className="inline-flex items-center gap-1 text-xs font-bold hover:underline px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Open in Windows File Explorer"
                   >
-                    {entry.filename || 'Untitled Download'}
-                  </a>
-                  <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
-                    {formatTime(entry.timestamp)}
-                  </p>
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>View</span>
+                  </button>
                 </div>
               </div>
-
-              {/* Right: Actions (Browser Download + File Explorer) */}
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {entry.success && entry.filename && (
-                  <button
-                    type="button"
-                    onClick={() => helperApi.triggerBrowserDownload(entry.filename)}
-                    style={{ color: 'var(--accent-color)' }}
-                    className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                    title="Download to browser"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                )}
-
-                <button 
-                  type="button"
-                  onClick={() => handleView(entry)}
-                  style={{ color: 'var(--accent-color)' }}
-                  className="inline-flex items-center gap-1 text-xs font-bold hover:underline px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                  title="Open in Windows File Explorer"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>View</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+

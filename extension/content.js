@@ -82,11 +82,19 @@
       iconEl.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
     }
     if (badgeEl) {
-      badgeEl.textContent = state === 'processing' ? 'Muxing...' : `${pct}%`;
+      if (state === 'processing') {
+        badgeEl.textContent = `${pct}%`;
+      } else if (state === 'extracting' || state === 'starting') {
+        badgeEl.textContent = `${pct}%`;
+      } else {
+        badgeEl.textContent = `${pct}%`;
+      }
     }
     if (msgEl) {
       if (state === 'processing') {
-        msgEl.textContent = 'Processing & muxing media files... 100%';
+        msgEl.textContent = speed || message || `Processing media files... ${pct}%`;
+      } else if (state === 'extracting') {
+        msgEl.textContent = speed || 'Extracting media info...';
       } else if (speed) {
         msgEl.textContent = `${message || 'Downloading'} • ${speed}${eta ? ' • ETA ' + eta : ''}`;
       } else {
@@ -302,6 +310,24 @@
         uStr = 'https://' + uStr;
       }
       const u = new URL(uStr);
+
+      // 1. YouTube watch URLs: strip playlist and secondary params
+      if (u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be')) {
+        if (u.pathname === '/watch' || u.pathname === '/watch_popup') {
+          const v = u.searchParams.get('v');
+          if (v) return `https://www.youtube.com/watch?v=${v}`;
+        }
+        if (u.pathname.startsWith('/shorts/')) {
+          const sMatch = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]+)/);
+          if (sMatch) return `https://www.youtube.com/shorts/${sMatch[1]}`;
+        }
+        if (u.hostname.includes('youtu.be')) {
+          const id = u.pathname.replace(/^\/+/, '').split('/')[0];
+          if (id) return `https://www.youtube.com/watch?v=${id}`;
+        }
+      }
+
+      // 2. Instagram
       if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
         if (u.pathname.includes('/stories/') || u.pathname.startsWith('/s/')) {
           return u.href;
@@ -311,6 +337,12 @@
           const type = u.pathname.includes('reel') ? 'reel' : (u.pathname.includes('tv') ? 'tv' : 'p');
           return `https://www.instagram.com/${type}/${match[1]}/`;
         }
+      }
+
+      // 3. Pinterest
+      if (u.hostname.includes('pinterest.') || u.hostname.includes('pin.it')) {
+        const pinMatch = u.pathname.match(/\/pin\/(\d+)/i);
+        if (pinMatch) return `https://www.pinterest.com/pin/${pinMatch[1]}/`;
       }
     } catch {}
     return rawUrl;

@@ -106,7 +106,7 @@ export function useDownload() {
   }, []);
 
   useEffect(() => {
-    pollingRef.current = setInterval(pollActiveDownloads, 1500);
+    pollingRef.current = setInterval(pollActiveDownloads, 400);
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
@@ -145,6 +145,9 @@ export function useDownload() {
         state: 'connecting',
         filename: 'Connecting to source...'
       } : d));
+      
+      // Immediate poll right away so user sees fast status without waiting
+      setTimeout(pollActiveDownloads, 60);
       
     } catch (error: any) {
       if (error.message === 'UNAUTHORIZED') {

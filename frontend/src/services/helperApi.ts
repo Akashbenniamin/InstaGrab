@@ -1,4 +1,4 @@
-import { HelperHealthResponse, HelperStatusResponse, HelperDownloadResponse, MediaInfo } from '../types';
+import { HelperHealthResponse, HelperStatusResponse, HelperDownloadResponse, MediaInfo, HistoryEntry } from '../types';
 
 class HelperApi {
   private baseUrl = 'http://127.0.0.1:18765';
@@ -258,6 +258,44 @@ class HelperApi {
     } catch (e) {
       console.error('Failed to get config:', e);
       return null;
+    }
+  }
+
+  async getRecentDownloads(): Promise<HistoryEntry[]> {
+    try {
+      let response = await fetch(`${this.baseUrl}/api/downloads/recent`, {
+        headers: this.getHeaders()
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('insta_dl_token');
+        try {
+          await this.autoPair();
+          response = await fetch(`${this.baseUrl}/api/downloads/recent`, {
+            headers: this.getHeaders()
+          });
+        } catch {}
+      }
+
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data.downloads || []).map((item: any) => ({
+        id: item.id,
+        url: '',
+        filename: item.filename,
+        filepath: item.filepath,
+        sizeFormatted: item.sizeFormatted,
+        isAudio: item.isAudio,
+        isVideo: item.isVideo,
+        isImage: item.isImage,
+        isZip: item.isZip,
+        platform: item.platform,
+        timestamp: item.timestamp || Date.now(),
+        success: true
+      }));
+    } catch (e) {
+      console.warn('Failed to fetch recent downloads from helper:', e);
+      return [];
     }
   }
 

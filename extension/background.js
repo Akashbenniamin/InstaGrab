@@ -77,6 +77,24 @@ function normalizeMediaUrl(rawUrl) {
       uStr = 'https://' + uStr;
     }
     const u = new URL(uStr);
+
+    // 1. YouTube watch URLs: strip playlist and secondary params to prevent runaway playlist downloads
+    if (u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be')) {
+      if (u.pathname === '/watch' || u.pathname === '/watch_popup') {
+        const v = u.searchParams.get('v');
+        if (v) return `https://www.youtube.com/watch?v=${v}`;
+      }
+      if (u.pathname.startsWith('/shorts/')) {
+        const sMatch = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]+)/);
+        if (sMatch) return `https://www.youtube.com/shorts/${sMatch[1]}`;
+      }
+      if (u.hostname.includes('youtu.be')) {
+        const id = u.pathname.replace(/^\/+/, '').split('/')[0];
+        if (id) return `https://www.youtube.com/watch?v=${id}`;
+      }
+    }
+
+    // 2. Instagram
     if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
       if (u.pathname.includes('/stories/') || u.pathname.includes('/s/')) {
         return u.href;
@@ -86,6 +104,12 @@ function normalizeMediaUrl(rawUrl) {
         const type = u.pathname.includes('reel') ? 'reel' : (u.pathname.includes('tv') ? 'tv' : 'p');
         return `https://www.instagram.com/${type}/${match[1]}/`;
       }
+    }
+
+    // 3. Pinterest
+    if (u.hostname.includes('pinterest.') || u.hostname.includes('pin.it')) {
+      const pinMatch = u.pathname.match(/\/pin\/(\d+)/i);
+      if (pinMatch) return `https://www.pinterest.com/pin/${pinMatch[1]}/`;
     }
   } catch {}
   return rawUrl;
@@ -106,7 +130,7 @@ async function pollDownloadStatus(downloadId, token, tabId) {
   let completedFiles = null;
 
   while (Date.now() - startTime < 300000) { // 5 minute timeout for large files
-    await new Promise(r => setTimeout(r, 650));
+    await new Promise(r => setTimeout(r, 350));
 
     try {
       const sResp = await fetch(`${HELPER_BASE}/api/download/${downloadId}/status`, {
