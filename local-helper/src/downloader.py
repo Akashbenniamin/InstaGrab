@@ -441,12 +441,15 @@ class Downloader:
             'retries': 10,
             'fragment_retries': 10,
             'file_access_retries': 3,
-            'http_chunk_size': 10485760,
             'progress_hooks': [my_hook],
             'postprocessor_hooks': [my_pp_hook],
             'quiet': True,
             'no_warnings': True,
         }
+
+        # Apply chunking exclusively to YouTube to bypass DASH rate-limiting without breaking HLS range requests on Pinterest/Instagram
+        if platform == 'youtube':
+            ydl_opts['http_chunk_size'] = 10485760
 
         # Set ffmpeg directory if found
         ffmpeg_dir = get_ffmpeg_dir()
@@ -471,43 +474,53 @@ class Downloader:
                 'preferredquality': audio_bitrate,
             }]
         else:
-            # Video (MP4) - Prioritize H.264 (AVC) video and AAC (m4a) audio for 100% compatibility with editing software (After Effects, Premiere Pro, etc.)
+            # Video (MP4) - Prioritize progressive H.264 MP4, falling back to AVC+AAC muxing for editing software compatibility
             ydl_opts['merge_output_format'] = 'mp4'
             ydl_opts['format_sort'] = ['vcodec:h264', 'acodec:m4a', 'res', 'fps']
             if quality == '1080p':
                 ydl_opts['format'] = (
+                    'best[height<=1080][ext=mp4][protocol^=http]/'
                     'bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
                     'bestvideo[height<=1080][vcodec^=avc]+bestaudio/'
                     'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
+                    'best[height<=1080][ext=mp4]/'
                     'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
                 )
             elif quality == '720p':
                 ydl_opts['format'] = (
+                    'best[height<=720][ext=mp4][protocol^=http]/'
                     'bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
                     'bestvideo[height<=720][vcodec^=avc]+bestaudio/'
                     'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+                    'best[height<=720][ext=mp4]/'
                     'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
                 )
             elif quality == '480p':
                 ydl_opts['format'] = (
+                    'best[height<=480][ext=mp4][protocol^=http]/'
                     'bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
                     'bestvideo[height<=480][vcodec^=avc]+bestaudio/'
                     'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+                    'best[height<=480][ext=mp4]/'
                     'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
                 )
             elif quality == '360p':
                 ydl_opts['format'] = (
+                    'best[height<=360][ext=mp4][protocol^=http]/'
                     'bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
                     'bestvideo[height<=360][vcodec^=avc]+bestaudio/'
                     'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
+                    'best[height<=360][ext=mp4]/'
                     'bestvideo[height<=360]+bestaudio/best[height<=360]/best'
                 )
             else:
-                # 'best' (Highest Quality available with H.264 preference)
+                # 'best' (Highest Quality available with progressive MP4 preference)
                 ydl_opts['format'] = (
+                    'best[ext=mp4][protocol^=http]/'
                     'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/'
                     'bestvideo[vcodec^=avc]+bestaudio/'
                     'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
+                    'best[ext=mp4]/'
                     'bestvideo+bestaudio/best'
                 )
 
