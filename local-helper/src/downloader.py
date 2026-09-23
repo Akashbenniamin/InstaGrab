@@ -100,6 +100,7 @@ class Downloader:
             'no_warnings': True,
             'extract_flat': False,
             'noplaylist': (platform == 'youtube'),
+            'socket_timeout': 20,
         }
         ffmpeg_dir = get_ffmpeg_dir()
         if ffmpeg_dir:
@@ -427,6 +428,11 @@ class Downloader:
             'overwrites': True,
             'windowsfilenames': True,
             'noplaylist': (platform == 'youtube'),
+            'socket_timeout': 30,
+            'retries': 10,
+            'fragment_retries': 10,
+            'file_access_retries': 3,
+            'http_chunk_size': 10485760,
             'progress_hooks': [my_hook],
             'postprocessor_hooks': [my_pp_hook],
             'quiet': True,
@@ -664,8 +670,8 @@ class Downloader:
         except Exception as e:
             err_str = str(e)
 
-            # Check if YouTube encountered bot block or "The page needs to be reloaded"
-            if ('youtube.' in url.lower() or 'youtu.be' in url.lower()) and any(x in err_str.lower() for x in ['page needs to be reloaded', 'confirm you’re not a bot', 'confirm you are not a bot', 'sign in to confirm']):
+            # Check if YouTube encountered bot block or "The page needs to be reloaded" or read timeout
+            if ('youtube.' in url.lower() or 'youtu.be' in url.lower()) and any(x in err_str.lower() for x in ['page needs to be reloaded', 'confirm you’re not a bot', 'confirm you are not a bot', 'sign in to confirm', 'timed out', 'read operation timed out']):
                 try:
                     self.progress_store.update(download_id, state='extracting', filename='Retrying with YouTube mobile client...')
                     retry_opts = dict(ydl_opts)
