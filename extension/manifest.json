@@ -10,7 +10,8 @@
     "tabs",
     "clipboardRead",
     "contextMenus",
-    "cookies"
+    "cookies",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>",
@@ -57,7 +58,10 @@
         "*://youtube.com/*",
         "*://youtu.be/*",
         "*://*.instagram.com/*",
-        "*://instagram.com/*"
+        "*://instagram.com/*",
+        "*://akashbenniamin.github.io/*",
+        "*://localhost/*",
+        "*://127.0.0.1/*"
       ],
       "js": [
         "content.js"

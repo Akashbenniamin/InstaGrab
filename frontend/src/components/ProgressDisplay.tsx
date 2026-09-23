@@ -1,5 +1,5 @@
 import { DownloadProgress } from '../types';
-import { AlertCircle, CheckCircle2, RefreshCw, X, FolderOpen, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw, X, FolderOpen, Loader2, Lock } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 
 interface Props {
@@ -55,30 +55,62 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
         const displayProgress = Math.max(0, Math.min(100, rawProgress));
 
         if (isFailed || isCancelled) {
+          const isPrivate = item.errorType === 'private_content' || 
+            item.error?.toLowerCase().includes('private') || 
+            item.error?.toLowerCase().includes('login') ||
+            item.error?.toLowerCase().includes('age-restricted');
+
           return (
             <div 
               key={item.id} 
-              className="w-full p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 shadow-xs relative"
+              className={`w-full p-4 rounded-2xl shadow-xs relative ${
+                isPrivate
+                  ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60'
+                  : 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60'
+              }`}
             >
               {onDismiss && (
                 <button 
                   onClick={() => onDismiss(item.id)}
-                  className="absolute top-3 right-3 p-1 rounded-md text-red-400 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                  className={`absolute top-3 right-3 p-1 rounded-md transition-colors ${
+                    isPrivate
+                      ? 'text-amber-400 hover:text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                      : 'text-red-400 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/40'
+                  }`}
                   title="Dismiss"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
               <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                {isPrivate ? (
+                  <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                )}
                 <div className="flex-1 min-w-0 pr-6">
-                  <h4 className="font-semibold text-sm text-red-700 dark:text-red-400">
-                    {isCancelled ? 'Download Cancelled' : 'Download Failed'}
+                  <h4 className={`font-semibold text-sm ${
+                    isPrivate 
+                      ? 'text-amber-800 dark:text-amber-300' 
+                      : (isCancelled ? 'text-gray-700 dark:text-gray-300' : 'text-red-700 dark:text-red-400')
+                  }`}>
+                    {isCancelled ? 'Download Cancelled' : (isPrivate ? 'Private or Login-Protected Reel' : 'Download Failed')}
                   </h4>
-                  <p className="text-xs text-red-600 dark:text-red-300 mt-0.5 break-words">
+                  <p className={`text-xs mt-1 leading-relaxed ${
+                    isPrivate ? 'text-amber-700 dark:text-amber-300/90' : 'text-red-600 dark:text-red-300'
+                  } break-words`}>
                     {item.error || (isCancelled ? 'Cancelled by user' : 'An error occurred during download')}
                   </p>
-                  {item.filename && (
+                  {isPrivate && (
+                    <div className="mt-2.5 p-2.5 rounded-xl bg-amber-100/60 dark:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/60 text-[11px] text-amber-800 dark:text-amber-200 space-y-1">
+                      <p className="font-semibold">💡 How to download private or restricted posts:</p>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        <li>Make sure you follow or have access to this post on Instagram in your browser.</li>
+                        <li>Use the <strong>InstaGrab Chrome Extension</strong> while logged in — it uses your active session to download directly.</li>
+                      </ul>
+                    </div>
+                  )}
+                  {item.filename && !isPrivate && (
                     <p className="text-xs text-[var(--text-secondary)] mt-1 truncate">
                       File: {item.filename}
                     </p>
@@ -86,7 +118,9 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
                   {onRetry && !isCancelled && (
                     <button 
                       onClick={() => onRetry(item)} 
-                      className="mt-2 inline-flex items-center text-xs text-red-600 dark:text-red-400 hover:underline font-semibold"
+                      className={`mt-2.5 inline-flex items-center text-xs hover:underline font-semibold ${
+                        isPrivate ? 'text-amber-700 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
+                      }`}
                     >
                       <RefreshCw className="w-3.5 h-3.5 mr-1" /> Try Again
                     </button>

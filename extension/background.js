@@ -229,6 +229,32 @@ async function pollDownloadStatus(downloadId, token, tabId) {
   }
 }
 
+// Helper to retrieve comprehensive Instagram cookies (domain + host + api)
+async function getInstagramCookies() {
+  if (!chrome.cookies || !chrome.cookies.getAll) return [];
+  const cookieMap = new Map();
+  try {
+    const results = await Promise.allSettled([
+      chrome.cookies.getAll({ domain: 'instagram.com' }),
+      chrome.cookies.getAll({ url: 'https://www.instagram.com/' }),
+      chrome.cookies.getAll({ url: 'https://i.instagram.com/' })
+    ]);
+    for (const res of results) {
+      if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+        for (const c of res.value) {
+          const key = `${c.name}:${c.domain}:${c.path}`;
+          if (!cookieMap.has(key)) {
+            cookieMap.set(key, c);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[InstaGrab] Cookie extraction error:', e);
+  }
+  return Array.from(cookieMap.values());
+}
+
 // Helper to retrieve active browser cookies for authentication (18+ / private content)
 async function getCookiesForUrl(url) {
   if (!chrome.cookies || !chrome.cookies.getAll) return null;
@@ -236,7 +262,7 @@ async function getCookiesForUrl(url) {
     // Strictly Instagram only: Instagram requires session cookies for 18+ and stories.
     // YouTube anti-bot defense rejects Chrome browser session cookies with "The page needs to be reloaded".
     if (url && (url.includes('instagram.com') || url.includes('instagr.am'))) {
-      const cookies = await chrome.cookies.getAll({ domain: 'instagram.com' });
+      const cookies = await getInstagramCookies();
       return (cookies && cookies.length > 0) ? cookies : null;
     }
     return null;
@@ -249,7 +275,12 @@ async function getCookiesForUrl(url) {
 async function syncCookiesToHelper(domain = 'instagram.com') {
   if (!chrome.cookies || !chrome.cookies.getAll) return false;
   try {
-    const cookies = await chrome.cookies.getAll({ domain });
+    let cookies = [];
+    if (domain.includes('instagram')) {
+      cookies = await getInstagramCookies();
+    } else {
+      cookies = await chrome.cookies.getAll({ domain });
+    }
     if (!cookies || cookies.length === 0) return false;
     const token = await getAuthToken();
     if (!token) return false;
@@ -263,7 +294,8 @@ async function syncCookiesToHelper(domain = 'instagram.com') {
       body: JSON.stringify({ platform: domain.replace('.com', ''), cookies })
     });
     if (resp.ok) {
-      console.log(`[InstaGrab] Successfully synced ${cookies.length} ${domain} session cookies to Desktop Engine`);
+      const hasLogin = cookies.some(c => c.name === 'sessionid');
+      console.log(`[InstaGrab] Successfully synced ${cookies.length} ${domain} cookies to Desktop Engine (Logged In: ${hasLogin})`);
     }
     return resp.ok;
   } catch (e) {
@@ -517,9 +549,33 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.runtime.onInstalled.addListener(() => {
   syncCookiesToHelper('instagram.com');
 });
+
+// Sync on cookie changes (login, logout, token refresh)
+if (chrome.cookies && chrome.cookies.onChanged) {
+  let cookieDebounce = null;
+  chrome.cookies.onChanged.addListener((changeInfo) => {
+    const domain = changeInfo.cookie?.domain || '';
+    if (domain.includes('instagram.com')) {
+      if (cookieDebounce) clearTimeout(cookieDebounce);
+      cookieDebounce = setTimeout(() => {
+        syncCookiesToHelper('instagram.com');
+      }, 1500);
+    }
+  });
+}
+
 if (chrome.tabs && chrome.tabs.onUpdated) {
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab && tab.url && tab.url.includes('instagram.com')) {
+    if (changeInfo.status === 'complete' && tab && tab.url && (tab.url.includes('instagram.com') || tab.url.includes('akashbenniamin.github.io'))) {
+      syncCookiesToHelper('instagram.com');
+    }
+  });
+}
+
+if (chrome.alarms) {
+  chrome.alarms.create('sync_instagram_cookies', { periodInMinutes: 30 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'sync_instagram_cookies') {
       syncCookiesToHelper('instagram.com');
     }
   });

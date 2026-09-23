@@ -229,8 +229,14 @@ class Downloader:
                 }
         except Exception as e:
             err_str = str(e)
-            # Instagram photo / carousel fallback if yt-dlp finds no video formats or fails
-            if platform == 'instagram':
+            is_ig_auth_error = (
+                'empty media response' in err_str.lower()
+                or 'login' in err_str.lower()
+                or 'private' in err_str.lower()
+                or 'registered users' in err_str.lower()
+            )
+            # Instagram photo / carousel fallback if yt-dlp finds no video formats or fails (and not an auth error)
+            if platform == 'instagram' and not is_ig_auth_error:
                 try:
                     ig_info = self._fetch_instagram_post_info(url)
                     if ig_info:
@@ -247,6 +253,9 @@ class Downloader:
                         }
                 except Exception:
                     pass
+
+            if is_ig_auth_error:
+                raise Exception("This Instagram post is private, age-restricted, or requires login to view.")
 
             # Pinterest fallback if no video found
             if platform == 'pinterest' and 'pin' in url:
@@ -708,13 +717,34 @@ class Downloader:
                 except Exception as retry_err:
                     err_str = f"YouTube download error: {str(retry_err)}"
 
-            # Check if this is an Instagram photo, carousel, or post where yt-dlp finds no video formats or fails
+            # Check if this error from yt-dlp was due to authentication / private content / empty response
+            is_ig_auth_error = False
             if 'instagram.' in url.lower() or 'instagr.am' in url.lower():
+                err_lower = err_str.lower()
+                if (
+                    'empty media response' in err_lower
+                    or 'login' in err_lower
+                    or 'private' in err_lower
+                    or 'registered users' in err_lower
+                    or 'checkpoint' in err_lower
+                    or 'rate-limit' in err_lower
+                    or 'requires authentication' in err_lower
+                ):
+                    is_ig_auth_error = True
+
+            # Check if this is an Instagram photo, carousel, or post where yt-dlp finds no video formats or fails
+            # Skip fallback if yt-dlp already flagged that the post requires login or sent an empty media response
+            if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and not is_ig_auth_error:
                 try:
                     self._download_instagram_photo_or_carousel(url, download_id, base_path, item_index=item_index, as_zip=as_zip)
                     return
                 except Exception as ig_err:
-                    err_str = f"Instagram download failed: {str(ig_err)}"
+                    ig_err_str = str(ig_err)
+                    if 'private' in ig_err_str.lower() or 'login' in ig_err_str.lower():
+                        err_str = ig_err_str
+                        is_ig_auth_error = True
+                    else:
+                        err_str = f"Instagram download failed: {ig_err_str}"
 
             # Check if this is a Pinterest image pin where yt-dlp finds no video formats
             if 'pinterest.' in url.lower() and ('no video' in err_str.lower() or 'unable to extract' in err_str.lower() or 'no media' in err_str.lower()):
@@ -725,15 +755,28 @@ class Downloader:
                     err_str = f"Pinterest image download failed: {str(img_err)}"
 
             error_type = 'unknown'
-            if 'login' in err_str.lower() or 'private' in err_str.lower() or '401' in err_str or 'sign in' in err_str.lower():
+            if is_ig_auth_error or 'login' in err_str.lower() or 'private' in err_str.lower() or '401' in err_str or 'sign in' in err_str.lower():
                 error_type = 'private_content'
+                has_session = False
+                cookie_file = self.config.get_cookie_file_path('instagram')
+                if cookie_file and os.path.exists(cookie_file):
+                    try:
+                        with open(cookie_file, 'r', encoding='utf-8', errors='ignore') as f:
+                            if 'sessionid' in f.read():
+                                has_session = True
+                    except Exception:
+                        pass
+                if has_session:
+                    err_str = "This Instagram post is private or restricted. Your saved session does not have access (or has expired). Please verify access in your browser."
+                else:
+                    err_str = "This Instagram post is private, age-restricted, or requires login. Please log in to Instagram in your browser and use the InstaGrab Extension to download it."
             elif 'unsupported' in err_str.lower() or 'unable to extract' in err_str.lower():
                 error_type = 'instagram_changed'
             elif 'urlopen' in err_str.lower() or 'connection' in err_str.lower() or 'timed out' in err_str.lower():
                 error_type = 'network'
             elif 'cancelled' in err_str.lower():
                 error_type = 'cancelled'
-                
+
             self.progress_store.update(download_id, state='error', error=err_str, errorType=error_type)
         finally:
             import shutil
@@ -1147,6 +1190,8 @@ class Downloader:
                 og_img = re.search(r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html)
                 og_title = re.search(r'<meta\s+(?:property|name)=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html)
                 if not og_img:
+                    if 'httpErrorPage' in html or 'PolarisErrorRoot' in html or 'login' in html or 'checkpoint' in html:
+                        raise Exception("This Instagram post is private, age-restricted, or requires login to view.")
                     raise Exception("Could not find media content in this Instagram post")
                 img_url = og_img.group(1).replace('&amp;', '&')
                 title = og_title.group(1) if og_title else f"instagram_photo_{shortcode}"

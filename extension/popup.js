@@ -129,6 +129,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         statusText.style.color = '#ef4444';
       }
     });
+
+    // Auto-sync Instagram cookies to helper when popup opens
+    chrome.runtime.sendMessage({ action: 'syncCookies', domain: 'instagram.com' }, () => {
+      if (chrome.runtime.lastError) {}
+    });
   }
 
   // Live progress display logic
