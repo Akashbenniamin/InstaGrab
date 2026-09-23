@@ -61,3 +61,19 @@ def test_invalid_urls():
     for url in invalid_urls:
         valid, _, _ = validate_media_url(url)
         assert not valid, f"Incorrectly validated invalid URL: {url}"
+
+def test_normalize_instagram_url():
+    from src.downloader import normalize_instagram_url
+
+    # Highlights via /s/ shortlink
+    shortlink = "https://www.instagram.com/s/aGlnaGxpZ2h0OjE4MDkwOTQ2MDQ4MTIzOTc4?story_media_id=3240212345"
+    normalized = normalize_instagram_url(shortlink)
+    assert normalized == "https://www.instagram.com/stories/highlights/18090946048123978/"
+
+    # Stories highlight with query params
+    hl_url = "https://www.instagram.com/stories/highlights/18090946048123978/?story_media_id=123"
+    assert normalize_instagram_url(hl_url) == "https://www.instagram.com/stories/highlights/18090946048123978/"
+
+    # Posts / Reels normalization
+    post_url = "https://www.instagram.com/p/DFgdO1xzbZz/?igsh=MWQ1ZGUxMzBkMA=="
+    assert normalize_instagram_url(post_url) == "https://www.instagram.com/p/DFgdO1xzbZz/"

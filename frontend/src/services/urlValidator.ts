@@ -30,13 +30,25 @@ export function validateMediaUrl(url: string): ValidationResult {
 
   // 1. Instagram (Reels, Posts/Photos, Stories, Highlights)
   if (hostname.includes('instagram.com') || hostname.includes('instagr.am')) {
-    // A. Highlights via /s/ shortlink
+    // A. Highlights via /s/ shortlink (Base64 encoded highlight:<id>)
     const highlightShortMatch = pathname.match(/\/s\/([A-Za-z0-9_-]+)/);
     if (highlightShortMatch) {
+      let highlightId = highlightShortMatch[1];
+      let normalizedUrl = `https://www.instagram.com/s/${highlightShortMatch[1]}`;
+      try {
+        const cleanB64 = highlightShortMatch[1].replace(/-/g, '+').replace(/_/g, '/');
+        const paddedB64 = cleanB64 + '='.repeat((4 - (cleanB64.length % 4)) % 4);
+        const decoded = atob(paddedB64);
+        const matchId = decoded.match(/highlight:(\d+)/);
+        if (matchId) {
+          highlightId = matchId[1];
+          normalizedUrl = `https://www.instagram.com/stories/highlights/${highlightId}/`;
+        }
+      } catch {}
       return {
         valid: true,
-        normalized: `https://www.instagram.com/s/${highlightShortMatch[1]}`,
-        shortcode: highlightShortMatch[1],
+        normalized: normalizedUrl,
+        shortcode: highlightId,
         platform: 'instagram',
         contentType: 'highlight'
       };

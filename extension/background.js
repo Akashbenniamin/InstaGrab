@@ -96,7 +96,20 @@ function normalizeMediaUrl(rawUrl) {
 
     // 2. Instagram
     if (u.hostname.includes('instagram.com') || u.hostname.includes('instagr.am')) {
-      if (u.pathname.includes('/stories/') || u.pathname.includes('/s/')) {
+      const hlShortMatch = u.pathname.match(/\/s\/([A-Za-z0-9_-]+)/);
+      if (hlShortMatch) {
+        try {
+          const cleanB64 = hlShortMatch[1].replace(/-/g, '+').replace(/_/g, '/');
+          const paddedB64 = cleanB64 + '='.repeat((4 - (cleanB64.length % 4)) % 4);
+          const decoded = atob(paddedB64);
+          const matchId = decoded.match(/highlight:(\d+)/);
+          if (matchId) {
+            return `https://www.instagram.com/stories/highlights/${matchId[1]}/`;
+          }
+        } catch (_) {}
+        return u.href;
+      }
+      if (u.pathname.includes('/stories/')) {
         return u.href;
       }
       const match = u.pathname.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);

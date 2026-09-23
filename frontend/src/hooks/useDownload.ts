@@ -38,10 +38,22 @@ export function useDownload() {
             return prevList.map(item => {
               if (item.id !== job.id) return item;
 
+              const rawProgress = typeof status.progress === 'number' && !isNaN(status.progress) ? status.progress : (item.progress || 0);
+              let nextProgress = rawProgress;
+
+              // Smoothly advance progress during extraction/connection so the user sees continuous visual feedback
+              if (['starting', 'validating', 'connecting', 'extracting'].includes(status.state)) {
+                if (nextProgress < 24) {
+                  const currentProg = item.progress || 0;
+                  const simulated = Math.min(24, Math.max(5, currentProg + 2.5));
+                  nextProgress = Math.max(nextProgress, simulated);
+                }
+              }
+
               return {
                 ...item,
                 state: status.state,
-                progress: typeof status.progress === 'number' && !isNaN(status.progress) ? status.progress : item.progress,
+                progress: Math.round(nextProgress * 10) / 10,
                 speed: status.speed || item.speed,
                 eta: status.eta || item.eta,
                 filename: status.filename || item.filename,

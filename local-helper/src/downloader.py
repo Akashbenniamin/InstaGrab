@@ -20,6 +20,41 @@ def get_ffmpeg_dir():
         return ffmpeg_dir
     return None
 
+def normalize_instagram_url(url: str) -> str:
+    """Normalizes Instagram URLs, decoding /s/ shortlinks to highlights and cleaning params."""
+    if not url or not ('instagram.' in url.lower() or 'instagr.am' in url.lower()):
+        return url
+
+    # Decode /s/ shortlink: e.g. /s/aGlnaGxpZ2h0OjE4MDkwOTQ2MDQ4MTIzOTc4
+    short_match = re.search(r'/s/([A-Za-z0-9_-]+)', url)
+    if short_match:
+        token = short_match.group(1)
+        try:
+            import base64
+            clean_token = token.replace('-', '+').replace('_', '/')
+            padded = clean_token + '=' * (-len(clean_token) % 4)
+            decoded = base64.b64decode(padded).decode('utf-8', errors='ignore')
+            id_match = re.search(r'highlight:(\d+)', decoded)
+            if id_match:
+                return f"https://www.instagram.com/stories/highlights/{id_match.group(1)}/"
+        except Exception:
+            pass
+
+    # Clean story highlight URL: /stories/highlights/18090946048123978/?story_media_id=...
+    highlight_match = re.search(r'/stories/highlights/(\d+)', url)
+    if highlight_match:
+        return f"https://www.instagram.com/stories/highlights/{highlight_match.group(1)}/"
+
+    # Posts, Reels, TV
+    if not ('/stories/' in url):
+        match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+        if match:
+            shortcode = match.group(1)
+            content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
+            return f"https://www.instagram.com/{content_type}/{shortcode}/"
+
+    return url
+
 class Downloader:
     def __init__(self, config, progress_store):
         self.config = config
@@ -56,19 +91,15 @@ class Downloader:
             if yt_match:
                 url = f"https://www.youtube.com/watch?v={yt_match.group(1)}"
 
-        if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
-            match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
-            if match:
-                shortcode = match.group(1)
-                content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
-                url = f"https://www.instagram.com/{content_type}/{shortcode}/"
+        if platform == 'instagram':
+            url = normalize_instagram_url(url)
 
         ydl_opts = {
             'skip_download': True,
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            'noplaylist': True,
+            'noplaylist': (platform == 'youtube'),
         }
         ffmpeg_dir = get_ffmpeg_dir()
         if ffmpeg_dir:
@@ -130,7 +161,50 @@ class Downloader:
 
                 carousel_media = []
                 item_count = 1
-                if platform == 'instagram' and (media_type == 'carousel' or '/p/' in url or '/share/p/' in url):
+
+                # If playlist entries are present (Instagram carousel or highlight clips)
+                if info.get('_type') == 'playlist' or info.get('entries'):
+                    entries = [e for e in (info.get('entries') or []) if e]
+                    if entries:
+                        safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or 'media'
+                        for idx, entry in enumerate(entries):
+                            e_formats = entry.get('formats') or []
+                            v_formats = [f for f in e_formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url')]
+                            if not v_formats:
+                                v_formats = [f for f in e_formats if f.get('url') and f.get('ext') == 'mp4']
+
+                            is_vid = bool(v_formats)
+                            v_url = v_formats[0].get('url') if is_vid else None
+
+                            e_thumb = None
+                            if entry.get('thumbnails'):
+                                e_thumb = entry['thumbnails'][-1].get('url') or entry['thumbnails'][0].get('url')
+                            elif entry.get('thumbnail'):
+                                e_thumb = entry.get('thumbnail')
+
+                            slide_url = v_url if is_vid else e_thumb
+                            if not slide_url:
+                                continue
+
+                            fname = f"{safe_title}_{idx+1}.{'mp4' if is_vid else 'jpg'}"
+                            carousel_media.append({
+                                'index': idx + 1,
+                                'media_type': 'video' if is_vid else 'photo',
+                                'thumbnail': e_thumb or slide_url,
+                                'url': slide_url,
+                                'filename': fname,
+                                'width': entry.get('width') or 1080,
+                                'height': entry.get('height') or 1080
+                            })
+
+                        if carousel_media:
+                            item_count = len(carousel_media)
+                            if not thumbnail and carousel_media[0].get('thumbnail'):
+                                thumbnail = carousel_media[0]['thumbnail']
+                            if not playable_url and carousel_media[0]['media_type'] == 'video':
+                                playable_url = carousel_media[0]['url']
+
+                if platform == 'instagram' and not carousel_media and (media_type == 'carousel' or '/p/' in url or '/share/p/' in url):
                     try:
                         ig_info = self._fetch_instagram_post_info(url)
                         if ig_info:
@@ -231,12 +305,8 @@ class Downloader:
             if yt_match:
                 url = f"https://www.youtube.com/watch?v={yt_match.group(1)}"
 
-        if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
-            match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
-            if match:
-                shortcode = match.group(1)
-                content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
-                url = f"https://www.instagram.com/{content_type}/{shortcode}/"
+        if platform == 'instagram':
+            url = normalize_instagram_url(url)
 
         base_path = self.config.get_download_path()
 
@@ -268,11 +338,16 @@ class Downloader:
 
                 stream_idx = len(seen_files)  # 1 for video/audio, 2 for second stream if video+audio
 
-                pct_str = d.get('_percent_str', '0%').strip('\x1b[0;94m').strip('%')
-                try:
-                    raw_pct = float(pct_str)
-                except ValueError:
-                    raw_pct = 0.0
+                downloaded = d.get('downloaded_bytes') or 0
+                total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                if total > 0:
+                    raw_pct = (downloaded / total) * 100.0
+                else:
+                    pct_str = d.get('_percent_str', '0%').strip('\x1b[0;94m').strip('%')
+                    try:
+                        raw_pct = float(pct_str)
+                    except ValueError:
+                        raw_pct = 0.0
 
                 if format_type == 'audio':
                     # Single audio stream: map 0..90%
@@ -351,7 +426,7 @@ class Downloader:
             'outtmpl': outtmpl,
             'overwrites': True,
             'windowsfilenames': True,
-            'noplaylist': True,
+            'noplaylist': (platform == 'youtube'),
             'progress_hooks': [my_hook],
             'postprocessor_hooks': [my_pp_hook],
             'quiet': True,
@@ -429,8 +504,13 @@ class Downloader:
         is_valid, _, platform = validate_media_url(url)
         if platform == 'instagram':
             cookie_file = self.config.get_cookie_file_path('instagram')
-            if cookie_file:
-                ydl_opts['cookiefile'] = cookie_file
+            if cookie_file and os.path.exists(cookie_file):
+                safe_cookie_file = os.path.join(job_temp_dir, 'cookies.txt')
+                try:
+                    shutil.copyfile(cookie_file, safe_cookie_file)
+                    ydl_opts['cookiefile'] = safe_cookie_file
+                except Exception:
+                    ydl_opts['cookiefile'] = cookie_file
             elif self.config.get('use_browser_cookies'):
                 browser = self.config.get('browser_for_cookies')
                 if browser:
@@ -449,17 +529,85 @@ class Downloader:
                     if os.path.exists(mp3_filepath):
                         filepath = mp3_filepath
 
-                if not os.path.exists(filepath):
-                    # Check candidates inside job_temp_dir if filename differed
-                    candidates = [os.path.join(job_temp_dir, f) for f in os.listdir(job_temp_dir) if not f.endswith('.part') and not f.endswith('.ytdl') and not f.startswith('.')]
-                    if candidates:
-                        filepath = max(candidates, key=os.path.getsize)
+                MEDIA_EXTS = ('.mp4', '.mkv', '.webm', '.mov', '.avi', '.mp3', '.m4a', '.aac', '.wav', '.flac', '.jpg', '.jpeg', '.png', '.webp')
+                all_candidates = [
+                    os.path.join(job_temp_dir, f) for f in os.listdir(job_temp_dir)
+                    if not f.endswith('.part') and not f.endswith('.ytdl') and not f.startswith('.') and not f.endswith('.txt') and not f.endswith('.temp') and os.path.isfile(os.path.join(job_temp_dir, f))
+                ]
+                all_candidates = [f for f in all_candidates if os.path.splitext(f)[1].lower() in MEDIA_EXTS]
+
+                if not all_candidates and os.path.exists(filepath):
+                    all_candidates = [filepath]
+
+                # Ensure H.264 compatibility for all mp4 videos
+                if format_type != 'audio':
+                    ensured_candidates = []
+                    for cand in all_candidates:
+                        if cand.lower().endswith('.mp4'):
+                            try:
+                                cand = self._ensure_h264_compatible(cand, ffmpeg_dir)
+                            except Exception:
+                                pass
+                        ensured_candidates.append(cand)
+                    all_candidates = ensured_candidates
+
+                if len(all_candidates) > 1 and as_zip:
+                    import zipfile
+                    self.progress_store.update(download_id, state='processing', progress=95.0, speed='Packaging ZIP archive...')
+                    raw_title = info.get('title') or 'album'
+                    safe_title = re.sub(r'[<>:"/\\|?*]', '_', raw_title)[:60].strip() or 'album'
+                    zip_filename = f"{safe_title}.zip"
+                    target_zip_path = os.path.join(base_path, zip_filename)
+                    zc = 1
+                    while os.path.exists(target_zip_path):
+                        zip_filename = f"{safe_title} ({zc}).zip"
+                        target_zip_path = os.path.join(base_path, zip_filename)
+                        zc += 1
+
+                    with zipfile.ZipFile(target_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                        for cand in sorted(all_candidates):
+                            zf.write(cand, os.path.basename(cand))
+
+                    self.progress_store.update(
+                        download_id,
+                        state='complete',
+                        progress=100.0,
+                        filepath=target_zip_path,
+                        filename=zip_filename,
+                        files=[zip_filename]
+                    )
+                    return
+
+                if len(all_candidates) > 1 and not as_zip:
+                    import shutil
+                    moved_files = []
+                    for cand in sorted(all_candidates):
+                        cand_name = os.path.basename(cand)
+                        target_cand = os.path.join(base_path, cand_name)
+                        base_n, ext_n = os.path.splitext(cand_name)
+                        c = 1
+                        while os.path.exists(target_cand):
+                            cand_name = f"{base_n} ({c}){ext_n}"
+                            target_cand = os.path.join(base_path, cand_name)
+                            c += 1
+                        shutil.move(cand, target_cand)
+                        moved_files.append((target_cand, cand_name))
+
+                    self.progress_store.update(
+                        download_id,
+                        state='complete',
+                        progress=100.0,
+                        filepath=moved_files[0][0],
+                        filename=moved_files[0][1],
+                        files=[f[1] for f in moved_files]
+                    )
+                    return
+
+                # Single file candidate
+                if all_candidates:
+                    filepath = all_candidates[0]
 
                 if os.path.exists(filepath):
-                    # Ensure H.264 compatibility for video formats if source only had VP9/AV1
-                    if format_type != 'audio' and filepath.lower().endswith('.mp4'):
-                        filepath = self._ensure_h264_compatible(filepath, ffmpeg_dir)
-
                     size_mb = os.path.getsize(filepath) / (1024 * 1024)
                     max_mb = self.config.get('max_file_size_mb')
                     if max_mb and max_mb > 0 and size_mb > max_mb:
@@ -768,6 +916,124 @@ class Downloader:
         import json
         import re
 
+        url = normalize_instagram_url(url)
+
+        # First attempt: Try extracting full playlist / post entries via yt-dlp with noplaylist=False
+        ydl_opts = {
+            'skip_download': True,
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'noplaylist': False,
+        }
+        ffmpeg_dir = get_ffmpeg_dir()
+        if ffmpeg_dir:
+            ydl_opts['ffmpeg_location'] = ffmpeg_dir
+        import shutil
+        node_path = shutil.which('node')
+        if node_path:
+            ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
+
+        cookie_file = self.config.get_cookie_file_path('instagram')
+        if cookie_file and os.path.exists(cookie_file):
+            ydl_opts['cookiefile'] = cookie_file
+        elif self.config.get('use_browser_cookies'):
+            browser = self.config.get('browser_for_cookies')
+            if browser:
+                ydl_opts['cookiesfrombrowser'] = (browser,)
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if info:
+                    title = info.get('title') or ''
+                    safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or 'instagram_media'
+                    uploader = info.get('uploader') or info.get('channel') or 'Instagram'
+                    targets = []
+                    carousel_media = []
+
+                    entries = [e for e in (info.get('entries') or []) if e]
+                    if entries:
+                        for idx, entry in enumerate(entries):
+                            e_formats = entry.get('formats') or []
+                            v_formats = [f for f in e_formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url')]
+                            if not v_formats:
+                                v_formats = [f for f in e_formats if f.get('url') and f.get('ext') == 'mp4']
+                            if not v_formats:
+                                v_formats = [f for f in e_formats if f.get('url')]
+
+                            is_vid = bool(v_formats)
+                            v_url = v_formats[0].get('url') if is_vid else None
+
+                            e_thumb = None
+                            if entry.get('thumbnails'):
+                                e_thumb = entry['thumbnails'][-1].get('url') or entry['thumbnails'][0].get('url')
+                            elif entry.get('thumbnail'):
+                                e_thumb = entry.get('thumbnail')
+
+                            media_url = v_url if is_vid else (e_thumb or entry.get('url'))
+                            if not media_url:
+                                continue
+
+                            fname = f"{safe_title}_{idx+1}.{'mp4' if is_vid else 'jpg'}"
+                            targets.append((media_url, is_vid, fname, e_thumb or media_url))
+                            carousel_media.append({
+                                'index': idx + 1,
+                                'media_type': 'video' if is_vid else 'photo',
+                                'thumbnail': e_thumb or media_url,
+                                'url': media_url,
+                                'filename': fname,
+                                'width': entry.get('width') or 1080,
+                                'height': entry.get('height') or 1080
+                            })
+                        if targets:
+                            return {
+                                'title': title,
+                                'thumbnail': targets[0][3] if len(targets[0]) > 3 else targets[0][0],
+                                'duration': info.get('duration', 0),
+                                'uploader': uploader,
+                                'platform': 'instagram',
+                                'playable_url': targets[0][0] if targets[0][1] else None,
+                                'media_type': 'carousel' if len(targets) > 1 else ('video' if targets[0][1] else 'photo'),
+                                'targets': targets,
+                                'carousel_media': carousel_media,
+                                'item_count': len(targets)
+                            }
+                    else:
+                        formats = info.get('formats') or []
+                        v_formats = [f for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url')]
+                        if not v_formats:
+                            v_formats = [f for f in formats if f.get('url') and f.get('ext') == 'mp4']
+                        if not v_formats:
+                            v_formats = [f for f in formats if f.get('url')]
+
+                        is_vid = bool(v_formats)
+                        v_url = v_formats[0].get('url') if is_vid else None
+                        thumb = None
+                        if info.get('thumbnails'):
+                            thumb = info['thumbnails'][-1].get('url') or info['thumbnails'][0].get('url')
+                        elif info.get('thumbnail'):
+                            thumb = info.get('thumbnail')
+
+                        media_url = v_url if is_vid else (thumb or info.get('url'))
+                        if media_url:
+                            fname = f"{safe_title}.{'mp4' if is_vid else 'jpg'}"
+                            targets = [(media_url, is_vid, fname, thumb or media_url)]
+                            return {
+                                'title': title,
+                                'thumbnail': thumb or media_url,
+                                'duration': info.get('duration', 0),
+                                'uploader': uploader,
+                                'platform': 'instagram',
+                                'playable_url': v_url,
+                                'media_type': 'video' if is_vid else 'photo',
+                                'targets': targets,
+                                'carousel_media': [],
+                                'item_count': 1
+                            }
+        except Exception:
+            pass
+
         match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
         if not match:
             raise Exception("Could not parse Instagram shortcode from URL")
@@ -932,17 +1198,33 @@ class Downloader:
         else:
             targets = all_targets
 
-        self.progress_store.update(download_id, state='downloading', progress=30.0, filename=targets[0][2])
+        self.progress_store.update(download_id, state='downloading', progress=20.0, filename=targets[0][2])
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Referer': 'https://www.instagram.com/'
         }
 
+        cookie_file = self.config.get_cookie_file_path('instagram')
+        if cookie_file and os.path.exists(cookie_file):
+            try:
+                import http.cookiejar
+                cj = http.cookiejar.MozillaCookieJar(cookie_file)
+                cj.load(ignore_discard=True, ignore_expires=True)
+                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+            except Exception:
+                opener = urllib.request.build_opener()
+        else:
+            opener = urllib.request.build_opener()
+
         saved_files = []
         ffmpeg_dir = get_ffmpeg_dir()
 
         for i, target in enumerate(targets):
+            with self.active_downloads_lock:
+                if self.active_downloads.get(download_id, {}).get('cancel'):
+                    raise Exception("Download cancelled by user")
+
             media_url = target[0]
             is_vid = target[1]
             fname = target[2]
@@ -956,7 +1238,7 @@ class Downloader:
                 c += 1
 
             req = urllib.request.Request(media_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with opener.open(req, timeout=30) as resp:
                 with open(target_file, 'wb') as out_f:
                     out_f.write(resp.read())
 
@@ -968,7 +1250,7 @@ class Downloader:
                     pass
 
             saved_files.append((target_file, fname))
-            pct = 30.0 + (55.0 * (i + 1) / len(targets))
+            pct = 20.0 + (70.0 * (i + 1) / len(targets))
             self.progress_store.update(download_id, state='downloading', progress=round(pct, 1), filename=fname)
 
         if not saved_files:

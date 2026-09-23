@@ -1,5 +1,5 @@
 import { DownloadProgress } from '../types';
-import { AlertCircle, CheckCircle2, RefreshCw, X, FolderOpen } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw, X, FolderOpen, Loader2 } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 
 interface Props {
@@ -105,9 +105,10 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
             {/* Top row: State & percentage & dismiss/cancel */}
             <div className="flex justify-between items-center text-xs">
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] ${
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] ${
                   isComplete ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
                 }`}>
+                  {isActive && <Loader2 className="w-2.5 h-2.5 animate-spin text-purple-600 dark:text-purple-400" />}
                   {item.state === 'extracting' ? 'Extracting' : item.state === 'processing' ? 'Processing' : item.state}
                 </span>
                 {!isFailed && !isCancelled && (
@@ -138,18 +139,29 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
               </div>
             </div>
 
-            {/* Progress Bar */}
-            <div className="w-full h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative">
+            {/* Progress Bar with Continuous Active Shimmer Animation */}
+            <div className="w-full h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden relative shadow-inner">
               <div 
-                className={`h-full ${isComplete ? 'bg-green-500' : 'insta-gradient'} transition-all duration-300 ease-out`}
+                className={`h-full ${isComplete ? 'bg-green-500' : 'insta-gradient'} transition-all duration-300 ease-out relative`}
                 style={{ 
                   width: `${isComplete ? 100 : Math.max(5, displayProgress)}%`,
-                  ...(item.state === 'validating' || item.state === 'connecting' ? {
+                  ...(isActive ? {
+                    backgroundSize: '200% 100%',
                     animation: 'indeterminate 2s infinite linear',
-                    backgroundSize: '200% 100%'
                   } : {})
                 }}
-              />
+              >
+                {isActive && (
+                  <div 
+                    className="absolute inset-0 opacity-45 pointer-events-none"
+                    style={{
+                      backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.7) 50%, transparent 100%)',
+                      backgroundSize: '200% 100%',
+                      animation: 'shimmer 1.6s infinite linear'
+                    }}
+                  />
+                )}
+              </div>
             </div>
 
             {/* Speed & ETA / Stage Status */}
@@ -200,6 +212,10 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
         @keyframes indeterminate {
           0% { background-position: 200% 0; }
           100% { background-position: -200% 0; }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
         }
       `}</style>
     </div>

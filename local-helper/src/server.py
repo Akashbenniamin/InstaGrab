@@ -207,12 +207,9 @@ def create_app(config, downloader, token_manager):
                 pass
 
         # Canonical normalization for Instagram URLs
-        if platform == 'instagram' and not ('/stories/' in url or '/s/' in url):
-            match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
-            if match:
-                shortcode = match.group(1)
-                content_type = 'reel' if 'reel' in url else ('tv' if '/tv/' in url else 'p')
-                url = f"https://www.instagram.com/{content_type}/{shortcode}/"
+        if platform == 'instagram':
+            from .downloader import normalize_instagram_url
+            url = normalize_instagram_url(url)
             
         format_type = data.get('format_type', 'video')
         quality = data.get('quality', 'best')
