@@ -551,7 +551,7 @@ class Downloader:
                     for cand in all_candidates:
                         if cand.lower().endswith('.mp4'):
                             try:
-                                cand = self._ensure_h264_compatible(cand, ffmpeg_dir)
+                                cand = self._ensure_h264_compatible(cand, ffmpeg_dir, platform=platform, download_id=download_id)
                             except Exception:
                                 pass
                         ensured_candidates.append(cand)
@@ -692,7 +692,7 @@ class Downloader:
                                 filepath = max(candidates, key=os.path.getsize)
                         if os.path.exists(filepath):
                             if format_type != 'audio' and filepath.lower().endswith('.mp4'):
-                                filepath = self._ensure_h264_compatible(filepath, ffmpeg_dir)
+                                filepath = self._ensure_h264_compatible(filepath, ffmpeg_dir, platform=platform, download_id=download_id)
                             desired_filename = os.path.basename(filepath)
                             target_path = os.path.join(base_path, desired_filename)
                             target_filename = desired_filename
@@ -823,8 +823,9 @@ class Downloader:
             filepath=target_path
         )
 
-    def _ensure_h264_compatible(self, filepath: str, ffmpeg_dir: str = None) -> str:
-        """Verifies the output video uses H.264/AVC. If only VP9/AV1 was available, transcodes to H.264 for After Effects & Premiere Pro compatibility."""
+    def _ensure_h264_compatible(self, filepath: str, ffmpeg_dir: str = None, platform: str = None, download_id: str = None) -> str:
+        """Verifies the output video uses clean, editor-friendly H.264 (CFR, 1:1 square SAR, closed GOP, no B-pyramid).
+        Prevents pixel mosaic, macroblocking, green/purple frames, and stretching in Adobe After Effects & Premiere Pro."""
         if not filepath or not os.path.exists(filepath) or not filepath.lower().endswith('.mp4'):
             return filepath
 
@@ -846,60 +847,100 @@ class Downloader:
             si.wShowWindow = 0  # SW_HIDE
             creationflags = subprocess.CREATE_NO_WINDOW
 
+        temp_fixed = None
         try:
-            probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_name,codec_type,width,height,sample_aspect_ratio', '-of', 'json', filepath]
+            probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_name,codec_type,width,height,sample_aspect_ratio,has_b_frames', '-of', 'json', filepath]
             probe_res = subprocess.check_output(probe_cmd, startupinfo=si, creationflags=creationflags, timeout=15)
             data = json.loads(probe_res.decode('utf-8'))
             streams = data.get('streams', [])
             v_stream = next((s for s in streams if s.get('codec_type') == 'video'), {})
+            a_stream = next((s for s in streams if s.get('codec_type') == 'audio'), None)
             v_codec = v_stream.get('codec_name', '').lower()
             width = v_stream.get('width')
             height = v_stream.get('height')
             sar = v_stream.get('sample_aspect_ratio')
+            has_b_frames = v_stream.get('has_b_frames', 0)
             is_non_square_sar = bool(sar and sar not in ('1:1', '0:1', '1/1', '0/1'))
 
-            # Case 1: Transcode if using unsupported codecs (VP9, VP8, AV1)
-            if v_codec in ('vp9', 'vp8', 'av1', 'av01'):
-                temp_fixed = filepath + '.compat.mp4'
-                vf_filters = 'setsar=1,setpts=PTS-STARTPTS'
-                transcode_cmd = [
-                    ffmpeg_bin, '-y', '-i', filepath,
-                    '-vf', vf_filters,
-                    '-af', 'asetpts=PTS-STARTPTS,aresample=async=1',
-                    '-c:v', 'libx264', '-crf', '17', '-preset', 'fast', '-pix_fmt', 'yuv420p',
-                    '-fps_mode', 'cfr', '-g', '60', '-keyint_min', '60', '-bf', '0',
-                    '-avoid_negative_ts', 'make_zero',
-                    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
-                    '-movflags', '+faststart',
-                    temp_fixed
-                ]
-                subprocess.run(transcode_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=300)
-                if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
-                    try:
-                        os.replace(temp_fixed, filepath)
-                    except Exception:
-                        import shutil
-                        try:
-                            os.remove(filepath)
-                            shutil.move(temp_fixed, filepath)
-                        except Exception:
-                            filepath = temp_fixed
-
-            # Case 2: Codec is H.264, but has non-square SAR (anamorphic pixels that cause stretching in After Effects)
+            needs_stabilization = False
+            # 1. Non-H.264 formats (VP9, VP8, AV1, HEVC)
+            if v_codec in ('vp9', 'vp8', 'av1', 'av01', 'hevc', 'h265'):
+                needs_stabilization = True
+            # 2. Anamorphic non-square pixels that stretch in After Effects
             elif is_non_square_sar and width and height:
-                temp_fixed = filepath + '.sar.mp4'
-                # Lossless bitstream SAR normalization to 1:1
-                sar_cmd = [
-                    ffmpeg_bin, '-y', '-i', filepath,
-                    '-c:v', 'copy',
-                    '-c:a', 'copy',
-                    '-bsf:v', 'h264_metadata=sample_aspect_ratio=1/1',
-                    '-aspect', f"{width}:{height}",
-                    '-movflags', '+faststart',
-                    temp_fixed
+                needs_stabilization = True
+            # 3. YouTube DASH video streams (contain open GOPs, 250-frame keyframe intervals, and B-pyramid references that crash After Effects' decoder)
+            elif platform == 'youtube' or (v_codec == 'h264' and has_b_frames and has_b_frames >= 2):
+                needs_stabilization = True
+
+            if needs_stabilization:
+                if download_id:
+                    self.progress_store.update(download_id, state='processing', progress=95.0, speed='Optimizing for After Effects & Premiere...')
+
+                temp_fixed = filepath + '.ae_fixed.mp4'
+                vf_filters = 'setsar=1,setpts=PTS-STARTPTS'
+                audio_args = ['-af', 'asetpts=PTS-STARTPTS,aresample=async=1', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000'] if a_stream else ['-an']
+
+                # Attempt hardware acceleration for ultra-fast transcode (AMD AMF, NVIDIA NVENC, Intel QSV)
+                # Fall back to libx264 if hardware encoder unavailable
+                enc_candidates = [
+                    # 1. AMD AMF (e.g. Radeon RX 7800 XT)
+                    [
+                        ffmpeg_bin, '-y', '-i', filepath,
+                        '-vf', vf_filters,
+                        *audio_args,
+                        '-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-b:v', '18M', '-maxrate', '25M',
+                        '-g', '60', '-bf', '0', '-pix_fmt', 'yuv420p',
+                        '-fps_mode', 'cfr', '-avoid_negative_ts', 'make_zero',
+                        '-movflags', '+faststart',
+                        temp_fixed
+                    ],
+                    # 2. NVIDIA NVENC
+                    [
+                        ffmpeg_bin, '-y', '-i', filepath,
+                        '-vf', vf_filters,
+                        *audio_args,
+                        '-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '17',
+                        '-g', '60', '-bf', '0', '-pix_fmt', 'yuv420p',
+                        '-fps_mode', 'cfr', '-avoid_negative_ts', 'make_zero',
+                        '-movflags', '+faststart',
+                        temp_fixed
+                    ],
+                    # 3. Intel QSV
+                    [
+                        ffmpeg_bin, '-y', '-i', filepath,
+                        '-vf', vf_filters,
+                        *audio_args,
+                        '-c:v', 'h264_qsv', '-global_quality', '17',
+                        '-g', '60', '-bf', '0', '-pix_fmt', 'yuv420p',
+                        '-fps_mode', 'cfr', '-avoid_negative_ts', 'make_zero',
+                        '-movflags', '+faststart',
+                        temp_fixed
+                    ],
+                    # 4. CPU libx264 (Universal fallback)
+                    [
+                        ffmpeg_bin, '-y', '-i', filepath,
+                        '-vf', vf_filters,
+                        *audio_args,
+                        '-c:v', 'libx264', '-crf', '17', '-preset', 'veryfast',
+                        '-g', '60', '-keyint_min', '60', '-bf', '0', '-pix_fmt', 'yuv420p',
+                        '-fps_mode', 'cfr', '-avoid_negative_ts', 'make_zero',
+                        '-movflags', '+faststart',
+                        temp_fixed
+                    ]
                 ]
-                subprocess.run(sar_cmd, startupinfo=si, creationflags=creationflags, check=True, capture_output=True, timeout=60)
-                if os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
+
+                transcode_ok = False
+                for cmd in enc_candidates:
+                    try:
+                        res = subprocess.run(cmd, startupinfo=si, creationflags=creationflags, capture_output=True, timeout=300)
+                        if res.returncode == 0 and os.path.exists(temp_fixed) and os.path.getsize(temp_fixed) > 0:
+                            transcode_ok = True
+                            break
+                    except Exception:
+                        continue
+
+                if transcode_ok:
                     try:
                         os.replace(temp_fixed, filepath)
                     except Exception:
@@ -909,8 +950,20 @@ class Downloader:
                             shutil.move(temp_fixed, filepath)
                         except Exception:
                             filepath = temp_fixed
+                else:
+                    if os.path.exists(temp_fixed):
+                        try:
+                            os.remove(temp_fixed)
+                        except Exception:
+                            pass
         except Exception:
             pass
+        finally:
+            if temp_fixed and os.path.exists(temp_fixed) and temp_fixed != filepath:
+                try:
+                    os.remove(temp_fixed)
+                except Exception:
+                    pass
 
         return filepath
 
@@ -1250,7 +1303,7 @@ class Downloader:
 
             if is_vid and target_file.lower().endswith('.mp4'):
                 try:
-                    target_file = self._ensure_h264_compatible(target_file, ffmpeg_dir)
+                    target_file = self._ensure_h264_compatible(target_file, ffmpeg_dir, platform='instagram', download_id=download_id)
                     fname = os.path.basename(target_file)
                 except Exception:
                     pass

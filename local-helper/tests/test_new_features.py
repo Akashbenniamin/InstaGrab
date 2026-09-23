@@ -43,3 +43,14 @@ def test_server_recent_downloads_endpoint():
         assert 'filename' in item
         assert 'sizeFormatted' in item
         assert 'timestamp' in item
+
+def test_ensure_h264_compatible_edge_cases():
+    config = Config()
+    progress_store = ProgressStore()
+    downloader = Downloader(config, progress_store)
+
+    # Null, non-existent, non-mp4
+    assert downloader._ensure_h264_compatible(None) is None
+    assert downloader._ensure_h264_compatible("missing_file.mp4") == "missing_file.mp4"
+    assert downloader._ensure_h264_compatible("audio.mp3") == "audio.mp3"
+
