@@ -254,8 +254,17 @@ export function validateMediaUrl(url: string): ValidationResult {
     if (trackMatch) {
       return {
         valid: true,
-        normalized: `${parsedUrl.protocol}//${parsedUrl.host}${cleanPath}/`,
+        normalized: parsedUrl.search ? parsedUrl.href : `${parsedUrl.protocol}//${parsedUrl.host}${cleanPath}/`,
         shortcode: trackMatch[1],
+        platform: 'epidemic',
+        contentType: 'audio'
+      };
+    }
+    if (parsedUrl.searchParams.get('term') || parsedUrl.searchParams.get('instagrab_title')) {
+      return {
+        valid: true,
+        normalized: parsedUrl.href,
+        shortcode: parsedUrl.searchParams.get('term') || parsedUrl.searchParams.get('instagrab_title') || 'search',
         platform: 'epidemic',
         contentType: 'audio'
       };
@@ -267,9 +276,107 @@ export function validateMediaUrl(url: string): ValidationResult {
     };
   }
 
+  // 6. Magnific / Freepik (Images, Vectors, Videos, Video Thumbnails, Icons)
+  if (
+    hostname.includes('img.freepik.com') ||
+    hostname.includes('videocdn.cdnpk.net') ||
+    hostname.includes('fps.cdnpk.net') ||
+    hostname.includes('cdn-icons-png.freepik.com')
+  ) {
+    const isVideo = hostname.includes('videocdn') || /\.mp4(\?.*)?$/i.test(parsedUrl.href);
+    return {
+      valid: true,
+      normalized: parsedUrl.href,
+      platform: 'magnific',
+      contentType: isVideo ? 'video' : 'photo'
+    };
+  }
+
+  if (hostname.includes('magnific.com') || hostname.includes('magnific.ai') || hostname.includes('freepik.com')) {
+    const cleanPath = pathname.replace(/\/+$/, '');
+    const isVideo = /\/(?:free|premium)-video\//.test(cleanPath) || /\/video\//.test(cleanPath) || parsedUrl.searchParams.get('instagrab_type') === 'video';
+    if (
+      cleanPath.endsWith('.htm') ||
+      /\/(?:free|premium)-(?:photo|vector|psd|video|ai-image|icon)\//.test(cleanPath) ||
+      /\/(?:icon|animated-icon|video|serie)\//.test(cleanPath) ||
+      parsedUrl.searchParams.has('instagrab_media') ||
+      (cleanPath.includes('/search') && (parsedUrl.searchParams.has('term') || parsedUrl.searchParams.has('word')))
+    ) {
+      return {
+        valid: true,
+        normalized: parsedUrl.href,
+        platform: 'magnific',
+        contentType: isVideo ? 'video' : 'photo'
+      };
+    }
+    return {
+      valid: false,
+      error: 'Please provide a link to a Magnific image, vector, video, icon, or search item',
+      platform: 'magnific'
+    };
+  }
+
+  // 7. Flaticon (Icons as PNG)
+  if (
+    hostname.includes('cdn-icons-png.flaticon.com') ||
+    hostname.includes('cdn-icons-mp4.flaticon.com') ||
+    hostname.includes('cdn-icons-gif.flaticon.com') ||
+    hostname.includes('cdn-icons.flaticon.com')
+  ) {
+    return {
+      valid: true,
+      normalized: parsedUrl.href,
+      platform: 'flaticon',
+      contentType: 'photo'
+    };
+  }
+
+  if (hostname.includes('flaticon.com')) {
+    const cleanPath = pathname.replace(/\/+$/, '');
+    if (
+      /\/(?:free-icon|free-animated-icon|icon|packs|stickers-pack)\/[^/]+/.test(cleanPath) ||
+      parsedUrl.searchParams.has('instagrab_media') ||
+      (cleanPath.includes('/search') && parsedUrl.searchParams.has('word'))
+    ) {
+      return {
+        valid: true,
+        normalized: parsedUrl.href,
+        platform: 'flaticon',
+        contentType: 'photo'
+      };
+    }
+    return {
+      valid: false,
+      error: 'Please provide a link to a Flaticon icon or search query',
+      platform: 'flaticon'
+    };
+  }
+
+  // 8. Spotify (Single Track, Playlist, Album)
+  if (hostname.includes('open.spotify.com') || hostname.includes('play.spotify.com')) {
+    const cleanPath = pathname.replace(/\/+$/, '');
+    const spMatch = cleanPath.match(/\/(?:intl-[a-zA-Z-]+\/)?(?:embed\/)?(track|playlist|album)\/([A-Za-z0-9]+)/);
+    if (spMatch) {
+      const spType = spMatch[1];
+      const spId = spMatch[2];
+      return {
+        valid: true,
+        normalized: `https://open.spotify.com/${spType}/${spId}`,
+        shortcode: spId,
+        platform: 'spotify',
+        contentType: spType === 'track' ? 'audio' : 'carousel'
+      };
+    }
+    return {
+      valid: false,
+      error: 'Please provide a link to a Spotify Track, Playlist, or Album',
+      platform: 'spotify'
+    };
+  }
+
   return { 
     valid: false, 
-    error: 'Please enter a URL from Instagram, YouTube, Pinterest, Envato, or Epidemic Sound', 
+    error: 'Please enter a URL from Instagram, YouTube, Pinterest, Spotify, Envato, Epidemic Sound, Magnific, or Flaticon', 
     platform: 'unknown' 
   };
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film, ChevronLeft, ChevronRight, Music } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film, ChevronLeft, ChevronRight, Music, Copy, Check } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 import { validateMediaUrl } from '../services/urlValidator';
 import { CarouselMediaItem } from '../types';
@@ -33,10 +33,38 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
   const [ytId, setYtId] = useState<string | null>(null);
   const [detectedContentType, setDetectedContentType] = useState<string | undefined>(undefined);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [copiedPng, setCopiedPng] = useState(false);
+
+  const handleCopyPng = async () => {
+    const imgUrl = info?.thumbnail;
+    if (!imgUrl) return;
+    try {
+      const resp = await fetch(imgUrl);
+      const blob = await resp.blob();
+      // Convert to image/png via canvas if needed
+      const bmp = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(bmp, 0, 0);
+        const pngBlob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (pngBlob) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+          setCopiedPng(true);
+          setTimeout(() => setCopiedPng(false), 2000);
+        }
+      }
+    } catch (e) {
+      console.error('Copy PNG failed:', e);
+    }
+  };
 
   useEffect(() => {
     setIsPlaying(false);
     setActiveSlide(0);
+    setCopiedPng(false);
     const trimmed = url.trim();
     if (!trimmed) {
       setInfo(null);
@@ -57,7 +85,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     if (onMediaDetected) {
       onMediaDetected({
         contentType: val.contentType,
-        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : (val.contentType === 'audio' ? 'audio' : undefined)))
+        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : (val.contentType === 'audio' ? 'audio' : (val.contentType === 'carousel' ? 'carousel' : (val.contentType === 'photo' ? 'photo' : undefined)))))
       });
     }
 
@@ -74,12 +102,21 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
           media_type: val.contentType === 'shorts' ? 'shorts' : 'video'
         });
       }
-    } else if (val.platform === 'envato' || val.platform === 'epidemic') {
+    } else if (val.platform === 'envato' || val.platform === 'epidemic' || val.platform === 'spotify') {
       setYtId(null);
       setInfo({
-        title: val.platform === 'epidemic' ? 'Epidemic Sound Audio / SFX Track' : 'Envato Audio / SFX Track',
+        title: val.platform === 'spotify'
+          ? (val.contentType === 'carousel' ? 'Spotify Playlist / Album' : 'Spotify Audio Track')
+          : (val.platform === 'epidemic' ? 'Epidemic Sound Audio / SFX Track' : 'Envato Audio / SFX Track'),
         platform: val.platform,
-        media_type: 'audio'
+        media_type: val.contentType === 'carousel' ? 'carousel' : 'audio'
+      });
+    } else if (val.platform === 'magnific' || val.platform === 'flaticon') {
+      setYtId(null);
+      setInfo({
+        title: val.platform === 'flaticon' ? 'Flaticon PNG Icon' : 'Magnific Media',
+        platform: val.platform,
+        media_type: val.contentType || 'photo'
       });
     } else {
       setYtId(null);
@@ -136,6 +173,27 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
 
   const getMediaBadge = () => {
     const type = info?.media_type || detectedContentType;
+    if (info?.platform === 'spotify') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-xs">
+          <Music className="w-2.5 h-2.5" /> {type === 'carousel' ? 'Spotify Playlist' : 'Spotify'}
+        </span>
+      );
+    }
+    if (info?.platform === 'flaticon') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-xs">
+          <ImageIcon className="w-2.5 h-2.5" /> Flaticon PNG
+        </span>
+      );
+    }
+    if (info?.platform === 'magnific') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-xs">
+          <Sparkles className="w-2.5 h-2.5" /> Magnific {type === 'video' ? 'Video' : 'Image'}
+        </span>
+      );
+    }
     if (type === 'audio' || type === 'sfx' || info?.platform === 'envato' || info?.platform === 'epidemic') {
       const badgeLabel = info?.platform === 'epidemic' ? 'Epidemic Sound' : 'Envato Audio';
       return (
@@ -201,7 +259,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
   const currentSlideItem = hasCarousel ? info!.carousel_media![safeSlideIndex] : null;
   const displayThumbnail = currentSlideItem?.thumbnail || info?.thumbnail;
   const isPhoto = currentSlideItem ? (currentSlideItem.media_type === 'photo') : (info?.media_type === 'photo');
-  const isAudio = info?.media_type === 'audio' || info?.platform === 'envato' || info?.platform === 'epidemic';
+  const isAudio = info?.media_type === 'audio' || info?.platform === 'envato' || info?.platform === 'epidemic' || info?.platform === 'spotify';
 
   // Blank placeholder state
   if (!url.trim() || (!info?.thumbnail && !info?.playable_url && !isAudio && !loading)) {
@@ -212,7 +270,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
         </div>
         <p className="text-xs font-bold text-[var(--text-primary)]">Live Media Preview</p>
         <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-[220px]">
-          Paste any Instagram, YouTube, Pinterest, Envato, or Epidemic Sound link
+          Paste any Instagram, YouTube, Spotify, Pinterest, Magnific, Flaticon, Envato, or Epidemic link
         </p>
       </div>
     );
@@ -259,7 +317,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
               <img
                 src={displayThumbnail}
                 alt={info?.title || 'Media thumbnail'}
-                className="w-full h-full object-cover"
+                className={info?.platform === 'flaticon' ? 'w-full h-full object-contain p-4 bg-white/95' : 'w-full h-full object-cover'}
                 onError={(e) => {
                   if (ytId && e.currentTarget.src.includes('maxresdefault')) {
                     e.currentTarget.src = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
@@ -367,14 +425,37 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
 
       {/* Info strip below media */}
       <div className="p-3 flex flex-col justify-between flex-1 gap-1.5">
-        <div>
-          <h4 className="text-xs font-bold text-[var(--text-primary)] line-clamp-1 leading-snug">
-            {info?.title || 'Processing media link...'}
-          </h4>
-          {info?.uploader && (
-            <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 line-clamp-1">
-              {info.uploader}
-            </p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h4 className="text-xs font-bold text-[var(--text-primary)] line-clamp-1 leading-snug">
+              {currentSlideItem?.title || info?.title || 'Processing media link...'}
+            </h4>
+            {(currentSlideItem?.uploader || info?.uploader) && (
+              <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 line-clamp-1">
+                {currentSlideItem?.uploader || info?.uploader}
+              </p>
+            )}
+          </div>
+
+          {(info?.platform === 'flaticon' || (info?.platform === 'magnific' && info?.media_type === 'photo')) && info?.thumbnail && (
+            <button
+              type="button"
+              onClick={handleCopyPng}
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-primary)] hover:border-gray-400 dark:hover:border-gray-600 transition-all cursor-pointer active:scale-95"
+              title="Copy image to clipboard as PNG"
+            >
+              {copiedPng ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-500" />
+                  <span className="text-emerald-500">Copied PNG</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy PNG</span>
+                </>
+              )}
+            </button>
           )}
         </div>
 

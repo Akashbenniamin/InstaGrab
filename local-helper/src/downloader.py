@@ -98,6 +98,24 @@ class Downloader:
             except Exception as e:
                 return {'error': str(e)}
 
+        if platform == 'magnific':
+            try:
+                return self._extract_magnific_info(url)
+            except Exception as e:
+                return {'error': str(e)}
+
+        if platform == 'flaticon':
+            try:
+                return self._extract_flaticon_info(url)
+            except Exception as e:
+                return {'error': str(e)}
+
+        if platform == 'spotify':
+            try:
+                return self._extract_spotify_info(url)
+            except Exception as e:
+                return {'error': str(e)}
+
         if platform == 'youtube':
             yt_match = re.search(r'(?:youtube\.com/watch\?.*?v=|youtu\.be/)([A-Za-z0-9_-]{11})', url)
             if yt_match:
@@ -347,6 +365,34 @@ class Downloader:
         if platform in ('envato', 'epidemic'):
             try:
                 self._download_envato_audio(url, download_id, base_path, quality=quality, platform=platform)
+            except Exception as e:
+                err_str = str(e)
+                err_type = 'cancelled' if 'cancelled' in err_str.lower() else 'unknown'
+                self.progress_store.update(download_id, state='error', error=err_str, errorType=err_type)
+            finally:
+                with self.active_downloads_lock:
+                    if download_id in self.active_downloads:
+                        del self.active_downloads[download_id]
+                self.progress_store.cleanup_old()
+            return
+
+        if platform in ('magnific', 'flaticon'):
+            try:
+                self._download_magnific_or_flaticon(url, download_id, base_path, quality=quality, platform=platform)
+            except Exception as e:
+                err_str = str(e)
+                err_type = 'cancelled' if 'cancelled' in err_str.lower() else 'unknown'
+                self.progress_store.update(download_id, state='error', error=err_str, errorType=err_type)
+            finally:
+                with self.active_downloads_lock:
+                    if download_id in self.active_downloads:
+                        del self.active_downloads[download_id]
+                self.progress_store.cleanup_old()
+            return
+
+        if platform == 'spotify':
+            try:
+                self._download_spotify(url, download_id, base_path, quality=quality, item_index=item_index, as_zip=as_zip)
             except Exception as e:
                 err_str = str(e)
                 err_type = 'cancelled' if 'cancelled' in err_str.lower() else 'unknown'
@@ -1618,10 +1664,12 @@ class Downloader:
         netloc = parsed.netloc.lower()
 
         # 1. Direct audiocdn.epidemicsound.com audio stream URL
+        qs = urllib.parse.parse_qs(parsed.query)
+        custom_title = qs.get('instagrab_title', [None])[0]
+        custom_artist = qs.get('instagrab_artist', [None])[0]
+        search_term = custom_title or qs.get('term', [None])[0]
+
         if 'audiocdn.epidemicsound.com' in netloc:
-            qs = urllib.parse.parse_qs(parsed.query)
-            custom_title = qs.get('instagrab_title', [None])[0]
-            custom_artist = qs.get('instagrab_artist', [None])[0]
             clean_audio_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
             fname = os.path.splitext(os.path.basename(parsed.path))[0] or 'Track'
             return {
@@ -1636,6 +1684,61 @@ class Downloader:
                 'item_count': 1,
             }
 
+        def _search_epidemic_json_api(term_str: str, prefer_sfx: bool = True):
+            if not term_str:
+                return None
+            endpoints = ['sfx', 'tracks'] if prefer_sfx else ['tracks', 'sfx']
+            hdrs = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+            }
+            for ep in endpoints:
+                try:
+                    api_u = f"https://www.epidemicsound.com/json/search/{ep}/?term={urllib.parse.quote(term_str.strip())}&limit=10"
+                    req_api = urllib.request.Request(api_u, headers=hdrs)
+                    with urllib.request.urlopen(req_api, timeout=12) as r_api:
+                        api_data = json.loads(r_api.read().decode('utf-8', errors='ignore'))
+                    tracks_dict = (api_data.get('entities') or {}).get('tracks') or {}
+                    tracks_list = list(tracks_dict.values())
+                    if not tracks_list:
+                        continue
+                    exact = next(
+                        (t for t in tracks_list if (t.get('title') or '').strip().lower() == term_str.strip().lower() and ((t.get('stems') or {}).get('full') or {}).get('lqMp3Url')),
+                        None
+                    )
+                    chosen = exact or next((t for t in tracks_list if ((t.get('stems') or {}).get('full') or {}).get('lqMp3Url')), None)
+                    if chosen:
+                        mp3_u = chosen['stems']['full']['lqMp3Url']
+                        dur_sec = max(1, int(round((chosen.get('durationMs') or 0) / 1000.0))) if chosen.get('durationMs') else (chosen.get('length') or 0)
+                        thumb_u = chosen.get('cover') or chosen.get('imageUrl') or ''
+                        main_artists = (chosen.get('creatives') or {}).get('mainArtists') or []
+                        artist_name = 'Epidemic Sound'
+                        if main_artists:
+                            first_a = main_artists[0]
+                            artist_name = first_a.get('name') if isinstance(first_a, dict) else str(first_a)
+                        return {
+                            'title': chosen.get('title') or term_str,
+                            'thumbnail': thumb_u,
+                            'duration': dur_sec,
+                            'uploader': artist_name or 'Epidemic Sound',
+                            'platform': 'epidemic',
+                            'playable_url': mp3_u,
+                            'media_type': 'audio',
+                            'carousel_media': [],
+                            'item_count': 1,
+                        }
+                except Exception:
+                    continue
+            return None
+
+        # 1B. Epidemic Sound Search / List Row query (e.g. from /sound-effects/search?term=pop)
+        track_id_match = re.search(r'/(?:music/tracks|sound-effects/tracks|track)/([^/?#]+)', parsed.path)
+        if not track_id_match and search_term:
+            prefer_sfx = ('sound-effects' in parsed.path.lower()) or (qs.get('instagrab_sfx', ['0'])[0] == '1')
+            api_res = _search_epidemic_json_api(search_term, prefer_sfx=prefer_sfx)
+            if api_res:
+                return api_res
+
         # 2. Epidemic Sound Music or SFX Track Page
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -1646,8 +1749,8 @@ class Downloader:
         with urllib.request.urlopen(req, timeout=15) as resp:
             page_html = resp.read().decode('utf-8', errors='ignore')
 
-        title = None
-        uploader = None
+        title = custom_title
+        uploader = custom_artist
         duration = 0
         thumbnail = ''
         audio_url = None
@@ -1679,7 +1782,6 @@ class Downloader:
                 continue
 
         # Match the specific track's kosmosId / pathname in Next.js flight data first
-        track_id_match = re.search(r'/(?:music/tracks|sound-effects/tracks|track)/([^/?#]+)', parsed.path)
         if track_id_match:
             track_id = track_id_match.group(1)
             idx = page_html.find(track_id)
@@ -1695,6 +1797,12 @@ class Downloader:
             mp3_m = re.search(r'https://audiocdn\.epidemicsound\.com/[^"\'\s\\]+\.mp3', page_html)
             if mp3_m:
                 audio_url = mp3_m.group(0)
+
+        if not audio_url and (title or search_term):
+            prefer_sfx = 'sound-effects' in parsed.path.lower()
+            api_res = _search_epidemic_json_api(title or search_term, prefer_sfx=prefer_sfx)
+            if api_res:
+                return api_res
 
         if not audio_url:
             raise Exception("No audio stream found on this Epidemic Sound page. Please provide a valid Epidemic Sound Music or SFX track link.")
@@ -1797,7 +1905,7 @@ class Downloader:
                         )
 
             if not os.path.exists(temp_raw_path) or os.path.getsize(temp_raw_path) == 0:
-                raise Exception("The downloaded Envato audio file is empty.")
+                raise Exception(f"The downloaded {label} audio file is empty.")
 
             self.progress_store.update(
                 download_id,
@@ -1884,6 +1992,617 @@ class Downloader:
                 filepath=target_path,
                 filename=target_filename,
                 files=[target_filename]
+            )
+        finally:
+            try:
+                if os.path.exists(job_temp_dir):
+                    shutil.rmtree(job_temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+    def _extract_flaticon_info(self, url: str) -> dict:
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        custom_title = qs.get('instagrab_title', [None])[0]
+        media_param = qs.get('instagrab_media', [None])[0]
+
+        png_url = None
+        icon_id = None
+        slug = None
+
+        target_u = media_param or url
+        t_parsed = urllib.parse.urlparse(target_u)
+
+        if 'cdn-icons' in t_parsed.netloc.lower():
+            # Upgrade /64/, /128/, /256/ to /512/ for crisp 512px PNG
+            upgraded_path = re.sub(r'/(?:64|128|256)/', '/512/', t_parsed.path)
+            png_url = urllib.parse.urlunparse((t_parsed.scheme or 'https', t_parsed.netloc, upgraded_path, '', '', ''))
+            id_m = re.search(r'/(\d+)\.(?:png|gif|mp4)', upgraded_path)
+            if id_m:
+                icon_id = id_m.group(1)
+        else:
+            m = re.search(r'/(?:free-icon|free-animated-icon|icon)/([^/?#]+?)_(\d+)', parsed.path)
+            if m:
+                slug, icon_id = m.group(1), m.group(2)
+                folder = icon_id[:-3] or '0'
+                png_url = f"https://cdn-icons-png.flaticon.com/512/{folder}/{icon_id}.png"
+
+        if not png_url:
+            raise Exception("Could not resolve Flaticon PNG URL. Please click the icon's Download/Copy button or provide a valid Flaticon icon link.")
+
+        title = custom_title or (slug.replace('-', ' ').title() if slug else f"Flaticon Icon {icon_id or ''}".strip())
+        return {
+            'title': title,
+            'thumbnail': png_url,
+            'duration': 0,
+            'uploader': 'Flaticon',
+            'platform': 'flaticon',
+            'playable_url': None,
+            'media_type': 'photo',
+            'download_url': png_url,
+            'fallback_url': target_u if 'cdn-icons' in t_parsed.netloc.lower() else png_url,
+            'is_icon': True,
+            'mode': 'full',
+            'carousel_media': [],
+            'item_count': 1,
+        }
+
+    def _extract_magnific_info(self, url: str, quality: str = 'best') -> dict:
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        custom_title = qs.get('instagrab_title', [None])[0]
+        mode_param = qs.get('instagrab_mode', [None])[0]
+        type_param = qs.get('instagrab_type', [None])[0]  # 'video', 'thumbnail', 'icon', 'image'
+        media_param = qs.get('instagrab_media', [None])[0]
+        thumb_param = qs.get('instagrab_thumb', [None])[0]
+
+        if mode_param in ('preview', 'full'):
+            mode = mode_param
+        elif quality in ('480p', '360p', 'preview'):
+            mode = 'preview'
+        else:
+            mode = 'full'
+
+        raw_media_url = media_param or url
+        m_parsed = urllib.parse.urlparse(raw_media_url)
+        m_netloc = m_parsed.netloc.lower()
+
+        # Strip internal instagrab_* params from raw_media_url so signed CDN params stay clean
+        clean_q_pairs = [(k, v) for k, vals in urllib.parse.parse_qs(m_parsed.query, keep_blank_values=True).items() if not k.startswith('instagrab_') for v in vals]
+        clean_query = urllib.parse.urlencode(clean_q_pairs)
+        clean_media_url = urllib.parse.urlunparse((m_parsed.scheme or 'https', m_parsed.netloc, m_parsed.path, '', clean_query, ''))
+
+        download_url = None
+        fallback_url = None
+        is_video = False
+        is_icon = False
+        slug_title = None
+
+        # Case 1: Direct Video CDN (videocdn.cdnpk.net or .mp4 / .webm)
+        if ('videocdn.cdnpk.net' in m_netloc or re.search(r'\.(?:mp4|webm|mov)(?:\?.*)?$', clean_media_url, re.I)) and type_param != 'thumbnail':
+            is_video = True
+            download_url = clean_media_url
+            fallback_url = clean_media_url
+            base_n = os.path.splitext(os.path.basename(m_parsed.path))[0]
+            slug_title = base_n.replace('-', ' ').replace('_', ' ').title()
+
+        # Case 2: Direct Icon CDN (cdn-icons-png.freepik.com / cdn-icons-png.flaticon.com)
+        elif 'cdn-icons' in m_netloc or type_param == 'icon':
+            is_icon = True
+            if mode == 'full':
+                upgraded_path = re.sub(r'/(?:64|128|256)/', '/512/', m_parsed.path)
+                download_url = urllib.parse.urlunparse((m_parsed.scheme or 'https', m_parsed.netloc, upgraded_path, '', '', ''))
+                fallback_url = clean_media_url
+            else:
+                download_url = clean_media_url
+                fallback_url = clean_media_url
+            base_n = os.path.splitext(os.path.basename(m_parsed.path))[0]
+            slug_title = f"Magnific Icon {base_n}"
+
+        # Case 3: Direct Image / Vector / Photo / Thumbnail CDN (img.freepik.com / fps.cdnpk.net / cdnpk.net)
+        elif any(d in m_netloc for d in ['img.freepik.com', 'fps.cdnpk.net', 'cdnpk.net']):
+            base_n = os.path.splitext(os.path.basename(m_parsed.path))[0]
+            slug_title = re.sub(r'_\d+(?:-\d+)?$', '', base_n).replace('-', ' ').title()
+            if mode == 'preview':
+                # Download preview image directly as-is from the search grid / carousel
+                download_url = clean_media_url
+                fallback_url = clean_media_url
+            else:
+                # Opened image -> Download Full Size (2000px high-res) with fallback to signed URL
+                if 'img.freepik.com' in m_netloc:
+                    download_url = f"{m_parsed.scheme or 'https'}://{m_parsed.netloc}{m_parsed.path}?w=2000"
+                    fallback_url = clean_media_url
+                else:
+                    download_url = clean_media_url
+                    fallback_url = clean_media_url
+
+        # Case 4: Magnific / Freepik HTML page URL (/free-photo/...htm, /free-vector/...htm, /icon/..._12345)
+        else:
+            icon_m = re.search(r'/(?:free-icon|free-animated-icon|icon)/([^/?#]+?)_(\d+)', parsed.path)
+            htm_m = re.search(r'/((?:free|premium)-(?:photo|vector|psd|ai-image))/([^/?#]+?)\.htm', parsed.path)
+            if icon_m:
+                is_icon = True
+                slug_s, icon_id = icon_m.group(1), icon_m.group(2)
+                slug_title = slug_s.replace('-', ' ').title()
+                folder = icon_id[:-3] or '0'
+                sz = '512' if mode == 'full' else '128'
+                download_url = f"https://cdn-icons-png.flaticon.com/{sz}/{folder}/{icon_id}.png"
+                fallback_url = f"https://cdn-icons-png.freepik.com/{sz}/{folder}/{icon_id}.png"
+            elif htm_m:
+                folder_kind, slug_id = htm_m.group(1), htm_m.group(2)
+                slug_title = re.sub(r'_\d+(?:-\d+)?$', '', slug_id).replace('-', ' ').title()
+                w_val = '2000' if mode == 'full' else '740'
+                download_url = f"https://img.freepik.com/{folder_kind}/{slug_id}.jpg?w={w_val}"
+                fallback_url = f"https://img.freepik.com/{folder_kind}/{slug_id}.jpg"
+
+        if not download_url:
+            raise Exception("Please click the InstaGrab Download button directly on the Magnific image, vector, video, or icon card.")
+
+        title = (custom_title or slug_title or 'Magnific Media').strip()
+        thumb = thumb_param or (fallback_url if not is_video else '') or download_url
+
+        return {
+            'title': title,
+            'thumbnail': thumb,
+            'duration': 0,
+            'uploader': 'Magnific',
+            'platform': 'magnific',
+            'playable_url': download_url if is_video else None,
+            'media_type': 'video' if is_video else 'photo',
+            'download_url': download_url,
+            'fallback_url': fallback_url or download_url,
+            'is_video': is_video,
+            'is_icon': is_icon,
+            'is_thumbnail': (type_param == 'thumbnail'),
+            'mode': mode,
+            'carousel_media': [],
+            'item_count': 1,
+        }
+
+    def _download_magnific_or_flaticon(self, url: str, download_id: str, base_path: str, quality: str = 'best', platform: str = 'magnific'):
+        import urllib.request
+        import shutil
+        import io
+        from PIL import Image
+
+        label = 'Flaticon' if platform == 'flaticon' else 'Magnific'
+        self.progress_store.update(download_id, state='extracting', progress=10.0, speed=f'Resolving {label} media...')
+
+        info = self._extract_flaticon_info(url) if platform == 'flaticon' else self._extract_magnific_info(url, quality=quality)
+        primary_url = info.get('download_url')
+        fallback_url = info.get('fallback_url') or primary_url
+        is_video = bool(info.get('is_video'))
+        is_icon = bool(info.get('is_icon')) or (platform == 'flaticon')
+        is_thumb = bool(info.get('is_thumbnail'))
+        mode = info.get('mode') or 'full'
+
+        raw_title = info.get('title') or f"{label}_Media"
+        safe_title = re.sub(r'[<>:"/\\|?*]', '_', raw_title)
+        safe_title = re.sub(r'[\x00-\x1f]', '', safe_title).strip()
+        safe_title = re.sub(r'\s+', ' ', safe_title)[:90] or f"{label}_Media"
+
+        if platform == 'magnific' and not is_video and not is_icon:
+            suffix = ' [Thumb]' if is_thumb else (' [Preview]' if mode == 'preview' else ' [Full HD]')
+            if not safe_title.endswith(suffix):
+                safe_title = f"{safe_title}{suffix}"
+
+        ext = '.mp4' if is_video else ('.png' if is_icon else '.jpg')
+        job_temp_dir = os.path.join(base_path, '.tmp', download_id)
+        os.makedirs(job_temp_dir, exist_ok=True)
+        temp_file = os.path.join(job_temp_dir, f"{safe_title}{ext}")
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Referer': 'https://www.flaticon.com/' if platform == 'flaticon' else 'https://www.magnific.com/',
+        }
+
+        try:
+            resp_obj = None
+            for cand_u in ([primary_url, fallback_url] if fallback_url != primary_url else [primary_url]):
+                try:
+                    req = urllib.request.Request(cand_u, headers=headers)
+                    resp_obj = urllib.request.urlopen(req, timeout=25)
+                    break
+                except Exception as first_err:
+                    if cand_u == fallback_url:
+                        raise first_err
+                    continue
+
+            with resp_obj as resp:
+                total_bytes = int(resp.headers.get('Content-Length') or 0)
+                downloaded = 0
+                start_t = time.time()
+                with open(temp_file, 'wb') as out_f:
+                    while True:
+                        with self.active_downloads_lock:
+                            if self.active_downloads.get(download_id, {}).get('cancel'):
+                                raise Exception("Download cancelled by user")
+                        chunk = resp.read(32768)
+                        if not chunk:
+                            break
+                        out_f.write(chunk)
+                        downloaded += len(chunk)
+                        elapsed = max(time.time() - start_t, 0.05)
+                        bps = downloaded / elapsed
+                        speed_str = f"{bps / 1048576:.1f} MB/s" if bps >= 1048576 else f"{bps / 1024:.0f} KB/s"
+                        pct = (15.0 + (downloaded / total_bytes) * 75.0) if total_bytes > 0 else min(88.0, 20.0 + (downloaded / 300000.0) * 50.0)
+                        self.progress_store.update(
+                            download_id,
+                            state='downloading',
+                            progress=round(min(pct, 90.0), 1),
+                            speed=speed_str,
+                            filename=f"{safe_title}{ext}"
+                        )
+
+            if is_icon:
+                # Guarantee valid PNG with preserved RGBA transparency
+                self.progress_store.update(download_id, state='processing', progress=94.0, speed='Finalizing PNG icon...', filename=f"{safe_title}.png")
+                with open(temp_file, 'rb') as f_in:
+                    raw_bytes = f_in.read()
+                im = Image.open(io.BytesIO(raw_bytes))
+                if im.mode not in ('RGBA', 'RGB'):
+                    im = im.convert('RGBA')
+                im.save(temp_file, format='PNG', optimize=True)
+            elif is_video:
+                ffmpeg_dir = get_ffmpeg_dir()
+                temp_file = self._ensure_h264_compatible(temp_file, ffmpeg_dir, platform=platform, download_id=download_id)
+
+            desired_filename = f"{safe_title}{ext}"
+            target_path = os.path.join(base_path, desired_filename)
+            target_filename = desired_filename
+            counter = 1
+            while os.path.exists(target_path):
+                try:
+                    with open(target_path, 'r+b'):
+                        break
+                except (PermissionError, OSError):
+                    target_filename = f"{safe_title} ({counter}){ext}"
+                    target_path = os.path.join(base_path, target_filename)
+                    counter += 1
+
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
+            shutil.move(temp_file, target_path)
+
+            self.progress_store.update(
+                download_id,
+                state='complete',
+                progress=100.0,
+                filepath=target_path,
+                filename=target_filename,
+                files=[target_filename]
+            )
+        finally:
+            try:
+                if os.path.exists(job_temp_dir):
+                    shutil.rmtree(job_temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+    def _extract_spotify_info(self, url: str) -> dict:
+        import urllib.request
+        import urllib.parse
+
+        m = re.search(r'/(?:intl-[a-zA-Z-]+/)?(?:embed/)?(track|playlist|album)/([A-Za-z0-9]+)', url)
+        if not m:
+            raise Exception("Invalid Spotify URL. Please provide a Spotify Track, Playlist, or Album link.")
+
+        kind, spotify_id = m.group(1), m.group(2)
+        embed_url = f"https://open.spotify.com/embed/{kind}/{spotify_id}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+
+        req = urllib.request.Request(embed_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+
+        nd_m = re.search(r'<script\s+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html, re.DOTALL)
+        if not nd_m:
+            raise Exception("Could not extract Spotify metadata from embed page.")
+
+        nd = json.loads(nd_m.group(1))
+        entity = (((nd.get('props') or {}).get('pageProps') or {}).get('state') or {}).get('data', {}).get('entity') or {}
+        if not entity:
+            raise Exception("Spotify resource not found or unavailable.")
+
+        # Extract cover art
+        cover_url = ''
+        cover_sources = (entity.get('coverArt') or {}).get('sources') or (entity.get('visualIdentity') or {}).get('image') or []
+        if isinstance(cover_sources, list) and cover_sources:
+            cover_url = cover_sources[-1].get('url') or cover_sources[0].get('url') or ''
+        if not cover_url:
+            try:
+                oembed_u = f"https://open.spotify.com/oembed?url=https://open.spotify.com/{kind}/{spotify_id}"
+                with urllib.request.urlopen(urllib.request.Request(oembed_u, headers=headers), timeout=8) as oe_r:
+                    oe_data = json.loads(oe_r.read().decode('utf-8', errors='ignore'))
+                    cover_url = oe_data.get('thumbnail_url') or ''
+            except Exception:
+                pass
+
+        if kind == 'track':
+            raw_title = entity.get('title') or entity.get('name') or 'Spotify Track'
+            artists_list = [a.get('name') for a in (entity.get('artists') or []) if isinstance(a, dict) and a.get('name')]
+            artist_str = ', '.join(artists_list) or entity.get('subtitle') or 'Spotify Artist'
+            duration_sec = int(round((entity.get('duration') or 0) / 1000.0))
+            preview_url = (entity.get('audioPreview') or {}).get('url')
+            full_title = f"{artist_str} - {raw_title}" if artist_str else raw_title
+            return {
+                'title': full_title,
+                'raw_title': raw_title,
+                'artist': artist_str,
+                'thumbnail': cover_url,
+                'duration': duration_sec,
+                'uploader': artist_str,
+                'platform': 'spotify',
+                'playable_url': preview_url,
+                'media_type': 'audio',
+                'kind': 'track',
+                'tracks': [{
+                    'index': 1,
+                    'title': raw_title,
+                    'artist': artist_str,
+                    'duration': duration_sec,
+                    'preview_url': preview_url,
+                    'id': spotify_id,
+                }],
+                'carousel_media': [],
+                'item_count': 1,
+            }
+
+        # Playlist or Album (Bulk + Single item support)
+        playlist_title = entity.get('title') or entity.get('name') or f"Spotify {kind.title()}"
+        subtitle = entity.get('subtitle') or f"Spotify {kind.title()}"
+        raw_tracks = entity.get('trackList') or []
+        tracks = []
+        carousel_media = []
+
+        for idx, t in enumerate(raw_tracks):
+            t_title = t.get('title') or f"Track {idx + 1}"
+            t_artist = (t.get('subtitle') or subtitle).replace('\xa0', ' ').strip()
+            t_dur = int(round((t.get('duration') or 0) / 1000.0))
+            t_uri = t.get('uri') or ''
+            t_id = t_uri.split(':')[-1] if ':' in t_uri else ''
+            t_preview = (t.get('audioPreview') or {}).get('url')
+            disp_name = f"{t_artist} - {t_title}" if t_artist else t_title
+            safe_fn = re.sub(r'[<>:"/\\|?*]', '_', disp_name)[:80].strip() + '.mp3'
+            tracks.append({
+                'index': idx + 1,
+                'title': t_title,
+                'artist': t_artist,
+                'duration': t_dur,
+                'preview_url': t_preview,
+                'id': t_id,
+                'filename': f"{idx + 1:02d}. {safe_fn}",
+            })
+            carousel_media.append({
+                'index': idx + 1,
+                'media_type': 'audio',
+                'title': f"{t_title} — {t_artist}",
+                'uploader': t_artist,
+                'duration': t_dur,
+                'thumbnail': cover_url,
+                'url': f"https://open.spotify.com/track/{t_id}" if t_id else url,
+                'filename': f"{idx + 1:02d}. {t_title} — {t_artist}",
+                'width': 640,
+                'height': 640,
+            })
+
+        return {
+            'title': f"{playlist_title} ({len(tracks)} Tracks)",
+            'playlist_title': playlist_title,
+            'thumbnail': cover_url,
+            'duration': sum(t['duration'] for t in tracks),
+            'uploader': subtitle,
+            'platform': 'spotify',
+            'playable_url': tracks[0].get('preview_url') if tracks else None,
+            'media_type': 'carousel' if len(tracks) > 1 else 'audio',
+            'kind': kind,
+            'tracks': tracks,
+            'carousel_media': carousel_media,
+            'item_count': len(tracks) or 1,
+        }
+
+    def _download_spotify(self, url: str, download_id: str, base_path: str, quality: str = 'best', item_index: int = None, as_zip: bool = True):
+        import urllib.request
+        import shutil
+        import zipfile
+
+        self.progress_store.update(download_id, state='extracting', progress=6.0, speed='Extracting Spotify track metadata...')
+        info = self._extract_spotify_info(url)
+        all_tracks = info.get('tracks') or []
+        if not all_tracks:
+            raise Exception("No playable tracks found in this Spotify link.")
+
+        if item_index is not None:
+            idx_1based = max(1, int(item_index))
+            if 1 <= idx_1based <= len(all_tracks):
+                target_tracks = [all_tracks[idx_1based - 1]]
+                is_bulk = False
+            else:
+                target_tracks = [all_tracks[0]]
+                is_bulk = False
+        else:
+            target_tracks = all_tracks
+            is_bulk = len(target_tracks) > 1
+
+        job_temp_dir = os.path.join(base_path, '.tmp', download_id)
+        os.makedirs(job_temp_dir, exist_ok=True)
+
+        ffmpeg_dir = get_ffmpeg_dir()
+        audio_bitrate = '192' if quality == '192k' else ('128' if quality == '128k' else '320')
+        node_path = shutil.which('node')
+
+        downloaded_files = []
+        total_count = len(target_tracks)
+
+        try:
+            for i, tr in enumerate(target_tracks):
+                with self.active_downloads_lock:
+                    if self.active_downloads.get(download_id, {}).get('cancel'):
+                        raise Exception("Download cancelled by user")
+
+                t_title = tr.get('title') or f"Track {i + 1}"
+                t_artist = tr.get('artist') or 'Spotify'
+                full_label = f"{t_artist} - {t_title}" if t_artist else t_title
+                safe_name = re.sub(r'[<>:"/\\|?*]', '_', full_label)
+                safe_name = re.sub(r'[\x00-\x1f]', '', safe_name).strip()[:95] or f"Spotify_Track_{i + 1}"
+                if is_bulk:
+                    safe_name = f"{i + 1:02d} - {safe_name}"
+
+                base_pct = 10.0 + (i / total_count) * 80.0
+                step_span = 80.0 / total_count
+                status_prefix = f"[{i + 1}/{total_count}] " if is_bulk else ""
+
+                self.progress_store.update(
+                    download_id,
+                    state='downloading',
+                    progress=round(base_pct, 1),
+                    speed=f"{status_prefix}Searching & downloading: {full_label[:45]}...",
+                    filename=f"{safe_name}.mp3"
+                )
+
+                track_out_base = os.path.join(job_temp_dir, safe_name)
+                final_mp3 = track_out_base + '.mp3'
+
+                def track_hook(d, _base=base_pct, _span=step_span, _prefix=status_prefix, _fn=f"{safe_name}.mp3"):
+                    with self.active_downloads_lock:
+                        if self.active_downloads.get(download_id, {}).get('cancel'):
+                            raise Exception("Download cancelled by user")
+                    if d.get('status') == 'downloading':
+                        dl_b = d.get('downloaded_bytes') or 0
+                        tot_b = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                        sub_pct = (dl_b / tot_b) if tot_b > 0 else 0.5
+                        cur_p = min(92.0, _base + sub_pct * (_span * 0.85))
+                        spd = d.get('_speed_str', '')
+                        if spd:
+                            spd = re.sub(r'\x1b\[[0-9;]*m', '', spd).replace('MiB/s', ' MB/s').replace('KiB/s', ' KB/s').strip()
+                        self.progress_store.update(
+                            download_id,
+                            state='downloading',
+                            progress=round(cur_p, 1),
+                            speed=f"{_prefix}{spd}" if spd else f"{_prefix}Downloading MP3...",
+                            filename=_fn
+                        )
+
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': track_out_base + '.%(ext)s',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'noplaylist': True,
+                    'socket_timeout': 20,
+                    'retries': 5,
+                    'progress_hooks': [track_hook],
+                    'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}},
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': audio_bitrate,
+                    }],
+                    'postprocessor_args': [
+                        '-metadata', f'title={t_title}',
+                        '-metadata', f'artist={t_artist}',
+                        '-metadata', f"album={info.get('playlist_title') or t_title}",
+                    ],
+                }
+                if ffmpeg_dir:
+                    ydl_opts['ffmpeg_location'] = ffmpeg_dir
+                if node_path:
+                    ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
+
+                track_ok = False
+                search_query = f"ytsearch1:{t_artist} - {t_title} official audio"
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.extract_info(search_query, download=True)
+                    if os.path.exists(final_mp3) and os.path.getsize(final_mp3) > 0:
+                        track_ok = True
+                except Exception:
+                    track_ok = False
+
+                # Fallback to Spotify's direct preview MP3 stream if YouTube search fails
+                if not track_ok and tr.get('preview_url'):
+                    try:
+                        req_p = urllib.request.Request(tr['preview_url'], headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req_p, timeout=15) as r_p:
+                            with open(final_mp3, 'wb') as f_p:
+                                f_p.write(r_p.read())
+                        if os.path.exists(final_mp3) and os.path.getsize(final_mp3) > 0:
+                            track_ok = True
+                    except Exception:
+                        pass
+
+                if track_ok and os.path.exists(final_mp3):
+                    downloaded_files.append(final_mp3)
+
+            if not downloaded_files:
+                raise Exception("Could not download audio stream for this Spotify track.")
+
+            if len(downloaded_files) > 1 and as_zip:
+                self.progress_store.update(download_id, state='processing', progress=95.0, speed='Packaging Spotify playlist ZIP...')
+                raw_pl_title = info.get('playlist_title') or 'Spotify_Playlist'
+                safe_pl = re.sub(r'[<>:"/\\|?*]', '_', raw_pl_title)[:60].strip() or 'Spotify_Playlist'
+                zip_filename = f"{safe_pl}.zip"
+                target_zip_path = os.path.join(base_path, zip_filename)
+                zc = 1
+                while os.path.exists(target_zip_path):
+                    zip_filename = f"{safe_pl} ({zc}).zip"
+                    target_zip_path = os.path.join(base_path, zip_filename)
+                    zc += 1
+
+                with zipfile.ZipFile(target_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for mp3_f in downloaded_files:
+                        zf.write(mp3_f, os.path.basename(mp3_f))
+
+                self.progress_store.update(
+                    download_id,
+                    state='complete',
+                    progress=100.0,
+                    filepath=target_zip_path,
+                    filename=zip_filename,
+                    files=[zip_filename]
+                )
+                return
+
+            moved_files = []
+            for mp3_f in downloaded_files:
+                desired_name = os.path.basename(mp3_f)
+                target_p = os.path.join(base_path, desired_name)
+                base_n, ext_n = os.path.splitext(desired_name)
+                c = 1
+                while os.path.exists(target_p):
+                    try:
+                        with open(target_p, 'r+b'):
+                            break
+                    except (PermissionError, OSError):
+                        desired_name = f"{base_n} ({c}){ext_n}"
+                        target_p = os.path.join(base_path, desired_name)
+                        c += 1
+                if os.path.exists(target_p):
+                    try:
+                        os.remove(target_p)
+                    except Exception:
+                        pass
+                shutil.move(mp3_f, target_p)
+                moved_files.append((target_p, desired_name))
+
+            self.progress_store.update(
+                download_id,
+                state='complete',
+                progress=100.0,
+                filepath=moved_files[0][0],
+                filename=moved_files[0][1],
+                files=[f[1] for f in moved_files]
             )
         finally:
             try:

@@ -125,16 +125,26 @@ function normalizeMediaUrl(rawUrl) {
       if (pinMatch) return `https://www.pinterest.com/pin/${pinMatch[1]}/`;
     }
 
-    // 4. Envato Elements & AudioJungle
+    // 4. Envato Elements & AudioJungle (preserve instagrab_title query param if present)
     if (u.hostname.includes('envato.com') || u.hostname.includes('audiojungle.net')) {
+      if (u.searchParams.has('instagrab_title')) return u.href;
       const cleanPath = u.pathname.replace(/\/+$/, '');
       if (cleanPath) return `${u.protocol}//${u.host}${cleanPath}`;
     }
 
-    // 5. Epidemic Sound (preserve audiocdn query params)
+    // 5. Epidemic Sound (preserve audiocdn & search/title query params)
     if (u.hostname.includes('epidemicsound.com') && !u.hostname.includes('audiocdn.')) {
+      if (u.search) return u.href;
       const cleanPath = u.pathname.replace(/\/+$/, '');
       if (cleanPath) return `${u.protocol}//${u.host}${cleanPath}/`;
+    }
+
+    // 6. Spotify
+    if (u.hostname.includes('spotify.com')) {
+      const spMatch = u.pathname.match(/\/(?:intl-[a-zA-Z-]+\/)?(?:embed\/)?(track|playlist|album)\/([A-Za-z0-9]+)/);
+      if (spMatch) {
+        return `https://open.spotify.com/${spMatch[1]}/${spMatch[2]}`;
+      }
     }
   } catch {}
   return rawUrl;
@@ -322,7 +332,8 @@ async function startDownload(url, formatType, quality, tabId = null, options = {
     url.includes('envato.com') ||
     url.includes('audiojungle.net') ||
     url.includes('envatousercontent.com') ||
-    url.includes('epidemicsound.com')
+    url.includes('epidemicsound.com') ||
+    url.includes('spotify.com')
   );
   if (isAudioPlatform) {
     formatType = 'audio';
@@ -618,9 +629,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse(currentDownload);
     return true;
   }
+  if (request.action === 'fetchPngDataUrl') {
+    convertImageToPngDataUrl(request.url)
+      .then((dataUrl) => sendResponse({ success: true, dataUrl }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
   if (request.action === 'download') {
     const tabId = sender.tab ? sender.tab.id : null;
-    startDownload(request.url, request.format_type, request.quality, tabId).then(sendResponse);
+    startDownload(request.url, request.format_type, request.quality, tabId, request.options || {}).then(sendResponse);
     return true;
   }
 });

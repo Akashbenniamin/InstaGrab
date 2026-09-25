@@ -1,6 +1,7 @@
-// InstaGrab - Cross-Platform Content Script (Pinterest, YouTube & Instagram)
+// InstaGrab - Cross-Platform Content Script (Pinterest, YouTube, Instagram, Spotify, Magnific, Flaticon, Envato & Epidemic Sound)
 (function () {
   const DOWNLOAD_ICON = `<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+  const COPY_ICON = `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
   const SPINNER_ICON = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg>`;
   const CHECK_ICON = `<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
 
@@ -227,15 +228,6 @@
       if (/\/(?:music|sound-effects)\/tracks\/[a-fA-F0-9-]{10,}/.test(cleanPath) || /\/track\/[A-Za-z0-9_-]+/.test(cleanPath)) {
         return { url: window.location.href.split('?')[0], platform: 'epidemic' };
       }
-      // Check if a track row is currently playing
-      const pauseBtn = document.querySelector('[class*="TrackRow_trackRow"] button[aria-label*="Pause"], [role="row"] button[aria-label*="Pause"]');
-      if (pauseBtn) {
-        const row = pauseBtn.closest('[class*="TrackRow_trackRow"]') || pauseBtn.closest('[role="row"]');
-        const trackLink = row ? row.querySelector('a[href*="/music/tracks/"], a[href*="/sound-effects/tracks/"], a[href*="/track/"]') : null;
-        if (trackLink && trackLink.getAttribute('href')) {
-          return { url: new URL(trackLink.getAttribute('href'), window.location.origin).href, platform: 'epidemic' };
-        }
-      }
       const audios = Array.from(document.querySelectorAll('audio'));
       const activeAudio = audios.find(a => (!a.paused || a.currentTime > 0) && (a.currentSrc || a.src));
       if (activeAudio) {
@@ -243,6 +235,31 @@
         if (srcUrl && srcUrl.includes('epidemicsound.com')) {
           return { url: srcUrl, platform: 'epidemic' };
         }
+      }
+      if (window.location.search.includes('term=')) {
+        return { url: window.location.href, platform: 'epidemic' };
+      }
+    }
+
+    // 6. Magnific / Freepik
+    if (host.includes('magnific.') || host.includes('freepik.com')) {
+      return { url: window.location.href, platform: 'magnific' };
+    }
+
+    // 7. Flaticon
+    if (host.includes('flaticon.com')) {
+      return { url: window.location.href, platform: 'flaticon' };
+    }
+
+    // 8. Spotify
+    if (host.includes('spotify.com')) {
+      const cleanPath = path.replace(/\/+$/, '');
+      if (/\/(?:track|playlist|album)\/[A-Za-z0-9]+/.test(cleanPath)) {
+        return { url: window.location.href.split('?')[0], platform: 'spotify' };
+      }
+      const nowPlayingLink = document.querySelector('[data-testid="now-playing-widget"] a[href*="/track/"], [data-testid="context-item-info-title"] a[href*="/track/"]');
+      if (nowPlayingLink && nowPlayingLink.getAttribute('href')) {
+        return { url: new URL(nowPlayingLink.getAttribute('href'), window.location.origin).href.split('?')[0], platform: 'spotify' };
       }
     }
 
@@ -414,7 +431,7 @@
   }
 
   // Trigger download via Background Service Worker -> Browser Download Manager
-  async function downloadMedia(url, button, label = 'Download') {
+  async function downloadMedia(url, button, label = 'Download', extraOptions = {}) {
     if (button && button.classList.contains('instagrab-loading')) return;
     url = normalizeMediaUrl(url);
 
@@ -441,10 +458,18 @@
         url.includes('envato.com') ||
         url.includes('audiojungle.net') ||
         url.includes('envatousercontent.com') ||
-        url.includes('epidemicsound.com')
+        url.includes('epidemicsound.com') ||
+        url.includes('spotify.com')
       );
-      const effectiveFormat = isAudioPlatform ? 'audio' : prefs.format_type;
-      const formatLabel = effectiveFormat === 'audio' ? 'Audio (MP3)' : (prefs.quality === 'best' ? 'Full HD' : prefs.quality);
+      const isVisualPlatform = url && (
+        url.includes('magnific.') ||
+        url.includes('freepik.com') ||
+        url.includes('cdnpk.net') ||
+        url.includes('flaticon.com')
+      );
+      const effectiveFormat = extraOptions.format_type || (isAudioPlatform ? 'audio' : (isVisualPlatform ? 'video' : prefs.format_type));
+      const effectiveQuality = extraOptions.quality || prefs.quality;
+      const formatLabel = label !== 'Download' ? label : (effectiveFormat === 'audio' ? 'Audio (MP3)' : (effectiveQuality === 'best' ? 'Full HD' : effectiveQuality));
 
       updateToast({
         message: `Starting ${formatLabel} download...`,
@@ -458,7 +483,8 @@
             action: 'download',
             url: url,
             format_type: effectiveFormat,
-            quality: prefs.quality
+            quality: effectiveQuality,
+            options: extraOptions
           },
           (response) => {
             if (chrome.runtime.lastError || !response) {
@@ -502,6 +528,71 @@
       resetBtn();
       updateToast({
         message: '⚠️ Could not trigger download. Ensure InstaGrab is running.',
+        isError: true
+      });
+    }
+  }
+
+  // Copy any image/icon URL as a pure PNG to the system clipboard
+  async function copyImageAsPngToClipboard(imageUrl, button) {
+    if (!imageUrl || (button && button.classList.contains('instagrab-loading'))) return;
+    const origHtml = button ? button.innerHTML : '';
+    if (button) {
+      button.classList.add('instagrab-loading');
+      button.innerHTML = origHtml.includes('<span') ? `${SPINNER_ICON} <span>Copying...</span>` : `${SPINNER_ICON}`;
+    }
+
+    const restoreBtn = (isSuccess = false) => {
+      if (!button) return;
+      button.classList.remove('instagrab-loading');
+      if (isSuccess) {
+        button.classList.add('instagrab-success');
+        button.innerHTML = origHtml.includes('<span') ? `${CHECK_ICON} <span>Copied!</span>` : `${CHECK_ICON}`;
+        setTimeout(() => {
+          button.classList.remove('instagrab-success');
+          button.innerHTML = origHtml;
+        }, 2500);
+      } else {
+        button.innerHTML = origHtml;
+      }
+    };
+
+    try {
+      updateToast({
+        message: 'Converting & copying PNG to clipboard...',
+        progress: 45,
+        state: 'processing'
+      });
+
+      const dataUrl = await new Promise((resolve, reject) => {
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ action: 'fetchPngDataUrl', url: imageUrl }, (res) => {
+            if (chrome.runtime.lastError || !res || !res.success || !res.dataUrl) {
+              reject(new Error((res && res.error) || 'Failed to fetch PNG'));
+            } else {
+              resolve(res.dataUrl);
+            }
+          });
+        } else {
+          reject(new Error('Extension runtime unavailable'));
+        }
+      });
+
+      const resp = await fetch(dataUrl);
+      const pngBlob = await resp.blob();
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+
+      restoreBtn(true);
+      updateToast({
+        message: '✓ Crisp PNG copied to clipboard!',
+        progress: 100,
+        state: 'complete'
+      });
+    } catch (err) {
+      console.warn('[InstaGrab] Copy PNG error:', err);
+      restoreBtn(false);
+      updateToast({
+        message: '❌ Could not copy PNG to clipboard: ' + (err.message || 'Permission denied'),
         isError: true
       });
     }
@@ -883,36 +974,124 @@
   }
 
   // ================= EPIDEMIC SOUND MODULE =================
-  function scanEpidemic() {
-    // 1. Track Rows on Epidemic Sound Music & Sound Effects listings
-    const trackLinks = document.querySelectorAll('a[href*="/music/tracks/"], a[href*="/sound-effects/tracks/"], a[href*="/track/"]');
-    trackLinks.forEach((link) => {
-      const href = link.getAttribute('href');
-      if (!href) return;
+  function resolveEpidemicRowTargetUrl(row) {
+    try {
+      // 1. Check for direct track link inside row
+      const trackLink = row.querySelector('a[href*="/music/tracks/"], a[href*="/sound-effects/tracks/"], a[href*="/track/"]');
+      if (trackLink && trackLink.getAttribute('href')) {
+        return new URL(trackLink.getAttribute('href'), window.location.origin).href;
+      }
 
-      const row = link.closest('[class*="TrackRow_trackRow"]') || link.closest('[role="row"]') || link.closest('li');
-      if (!row || row.dataset.instagrabInjected) return;
-      row.dataset.instagrabInjected = 'true';
+      // 2. Extract track title from row (<img alt="Title"> or title text element)
+      let title = '';
+      const imgWithAlt = row.querySelector('img[alt]');
+      if (imgWithAlt && imgWithAlt.getAttribute('alt')) {
+        const altVal = imgWithAlt.getAttribute('alt').trim();
+        if (altVal && altVal.toLowerCase() !== 'cover' && altVal.toLowerCase() !== 'waveform') {
+          title = altVal;
+        }
+      }
+      if (!title) {
+        const textEls = Array.from(row.querySelectorAll('[class*="Title"], [class*="title"], [class*="_text_"], a, span, p'));
+        for (const el of textEls) {
+          const t = (el.textContent || '').trim();
+          if (t && t.length >= 2 && t.length <= 90 && !/^\d{2}:\d{2}/.test(t) && !/^(MP3|Download|Like|Share|Similar)$/i.test(t)) {
+            title = t;
+            break;
+          }
+        }
+      }
 
-      const itemUrl = new URL(href, window.location.origin).href;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'instagrab-epidemic-row-btn';
-      btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
-      btn.title = 'Download 320kbps MP3 Audio / SFX with InstaGrab';
+      // 3. If this row is currently playing (has Pause button) or is the bottom player bar, check active <audio>
+      const isPlayingRow = !!row.querySelector('button[aria-label*="Pause"], [aria-label*="Pause"]');
+      const isBottomBar = row.tagName === 'FOOTER' || row.closest('footer') || (row.getBoundingClientRect && row.getBoundingClientRect().top > window.innerHeight - 120);
+      if (isPlayingRow || isBottomBar) {
+        const audios = Array.from(document.querySelectorAll('audio'));
+        const activeAudio = audios.find(a => (a.currentSrc || a.src) && (a.currentSrc || a.src).includes('epidemicsound.com'));
+        if (activeAudio) {
+          const audioSrc = activeAudio.currentSrc || activeAudio.src;
+          const u = new URL(audioSrc);
+          if (title) u.searchParams.set('instagrab_title', title);
+          return u.href;
+        }
+      }
 
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        downloadMedia(itemUrl, btn, 'MP3');
-      });
+      // 4. Construct search/title lookup URL resolved by local-helper via /json/search/sfx/ or /json/search/tracks/
+      if (title) {
+        const isSfx = window.location.pathname.includes('sound-effects') ? '1' : '0';
+        const basePath = window.location.pathname.includes('sound-effects') ? '/sound-effects/search' : '/music/search';
+        return `https://www.epidemicsound.com${basePath}?term=${encodeURIComponent(title)}&instagrab_title=${encodeURIComponent(title)}&instagrab_sfx=${isSfx}`;
+      }
+    } catch (_) {}
+    return window.location.href;
+  }
 
-      const actionBtn = row.querySelector('button[aria-label*="Download"], button[title*="Download"], button[aria-label*="More"], button[aria-label*="Save"], button[aria-label*="Add"]');
+  function injectEpidemicRowButton(row, insertBeforeEl) {
+    if (!row || row.dataset.instagrabInjected) return;
+    row.dataset.instagrabInjected = 'true';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'instagrab-epidemic-row-btn';
+    btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
+    btn.title = 'Download 320kbps MP3 Audio / SFX with InstaGrab';
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const targetUrl = resolveEpidemicRowTargetUrl(row);
+      downloadMedia(targetUrl, btn, 'MP3');
+    });
+
+    if (insertBeforeEl && insertBeforeEl.parentElement) {
+      insertBeforeEl.parentElement.insertBefore(btn, insertBeforeEl);
+    } else {
+      const actionBtn = row.querySelector('button[aria-label*="Download"], button[title*="Download"], button[aria-label*="Like"], button[aria-label*="Add"], button[aria-label*="More"]');
       if (actionBtn && actionBtn.parentElement) {
         actionBtn.parentElement.insertBefore(btn, actionBtn);
       } else {
         row.appendChild(btn);
       }
+    }
+  }
+
+  function scanEpidemic() {
+    // 1A. Scan all native Download buttons on list/carousel/search rows & bottom player bar
+    // (Covers /sound-effects/search?term=pop, /music/search, category carousels, and sticky player)
+    const nativeDlBtns = document.querySelectorAll('button[aria-label="Download"], button[aria-label*="Download"], a[aria-label="Download"]');
+    nativeDlBtns.forEach((dlBtn) => {
+      if (dlBtn.classList.contains('instagrab-epidemic-row-btn') || dlBtn.classList.contains('instagrab-epidemic-item-btn')) return;
+
+      // Walk up to find the enclosing track row or player bar container
+      let row = dlBtn.closest('[class*="TrackRow"], [role="row"], li, footer');
+      if (!row) {
+        let curr = dlBtn.parentElement;
+        for (let i = 0; i < 6 && curr && curr !== document.body; i++) {
+          if (
+            curr.querySelector('img[alt]') ||
+            curr.querySelector('button[aria-label*="Play"], button[aria-label*="Pause"]') ||
+            curr.querySelector('a[href*="/track"]')
+          ) {
+            row = curr;
+            break;
+          }
+          curr = curr.parentElement;
+        }
+      }
+      if (!row) row = dlBtn.parentElement?.parentElement || dlBtn.parentElement;
+      if (!row || row.dataset.instagrabInjected) return;
+
+      injectEpidemicRowButton(row, dlBtn);
+    });
+
+    // 1B. Scan any track links that didn't have a native Download button
+    const trackLinks = document.querySelectorAll('a[href*="/music/tracks/"], a[href*="/sound-effects/tracks/"], a[href*="/track/"]');
+    trackLinks.forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+      const row = link.closest('[class*="TrackRow"], [role="row"], li') || link.parentElement?.parentElement;
+      if (!row || row.dataset.instagrabInjected) return;
+      injectEpidemicRowButton(row, null);
     });
 
     // 2. Single Track Detail Page on Epidemic Sound
@@ -943,6 +1122,593 @@
     }
   }
 
+  // ================= MAGNIFIC / FREEPIK MODULE =================
+  // Supports:
+  // - Search/Grid/Carousel Cards: Direct Preview download (as-is), Video + Video Thumbnail download, Icon PNG + Copy
+  // - Opened Detail Modal / Single Page: Full Size (HD 2000px) download, Copy as PNG, Full Video MP4 + HD Thumbnail
+  function getMagnificFullImageUrl(imgEl, fallbackUrl) {
+    let bestUrl = fallbackUrl || '';
+    if (imgEl) {
+      const srcset = imgEl.getAttribute('srcset') || '';
+      if (srcset) {
+        let maxW = 0;
+        srcset.split(',').forEach(part => {
+          const tokens = part.trim().split(/\s+/);
+          if (tokens[0]) {
+            const wMatch = (tokens[1] || '').match(/(\d+)w/);
+            const w = wMatch ? parseInt(wMatch[1], 10) : 0;
+            if (w >= maxW) {
+              maxW = w;
+              bestUrl = tokens[0];
+            }
+          }
+        });
+      }
+      if (!bestUrl) {
+        bestUrl = imgEl.currentSrc || imgEl.src || '';
+      }
+    }
+    if (bestUrl && bestUrl.includes('img.freepik.com')) {
+      try {
+        const u = new URL(bestUrl);
+        if (!u.searchParams.has('token') && !u.searchParams.has('hmac')) {
+          return `${u.origin}${u.pathname}?w=2000`;
+        }
+      } catch (_) {}
+    }
+    if (bestUrl && bestUrl.includes('cdn-icons-png.freepik.com')) {
+      bestUrl = bestUrl.replace(/\/(?:128|256)\//, '/512/');
+    }
+    return bestUrl;
+  }
+
+  function buildMagnificActionUrl({ pageUrl, mediaUrl, mode, type, title }) {
+    try {
+      const u = new URL(pageUrl || window.location.href, window.location.origin);
+      if (mediaUrl) u.searchParams.set('instagrab_media', mediaUrl);
+      if (mode) u.searchParams.set('instagrab_mode', mode);
+      if (type) u.searchParams.set('instagrab_type', type);
+      if (title) u.searchParams.set('instagrab_title', title.slice(0, 100));
+      return u.href;
+    } catch (_) {
+      return mediaUrl || pageUrl || window.location.href;
+    }
+  }
+
+  function scanMagnific() {
+    const path = window.location.pathname.replace(/\/+$/, '');
+    const isSingleItemPage = (
+      path.endsWith('.htm') ||
+      /\/(?:free|premium)-(?:photo|vector|psd|video|ai-image|icon)\//.test(path) ||
+      /\/(?:icon|animated-icon|video)\//.test(path)
+    );
+
+    // Detect opened detail modal / drawer on search page or single item page
+    const detailModal = document.querySelector(
+      'aside[data-cy="resource-detail"], [data-cy="resource-detail-modal"], div[role="dialog"]:has(img[src*="freepik.com"]), div[role="dialog"]:has(video), aside:has(img[src*="img.freepik.com"]), aside:has(video)'
+    );
+    const detailRoot = detailModal || (isSingleItemPage ? document.querySelector('main') || document.body : null);
+
+    // 1. Opened Item View (Detail Modal or Single Item Page) -> FULL SIZE Download
+    if (detailRoot) {
+      const videoEl = detailRoot.querySelector('video');
+      const allImgs = Array.from(detailRoot.querySelectorAll('img')).filter(img => {
+        const src = img.currentSrc || img.src || '';
+        if (!src || src.includes('avatar') || src.includes('profile') || src.includes('logo')) return false;
+        if (img.closest('.instagrab-card-bar')) return false;
+        const rect = img.getBoundingClientRect();
+        return rect.width >= 140 || img.naturalWidth >= 200 || src.includes('img.freepik.com') || src.includes('cdn-icons-png');
+      });
+      const mainImg = allImgs[0] || null;
+      const mainSrc = videoEl
+        ? (videoEl.currentSrc || videoEl.src || videoEl.querySelector('source')?.src || '')
+        : (mainImg ? (mainImg.currentSrc || mainImg.src || '') : '');
+
+      if (mainSrc || isSingleItemPage) {
+        const existingBar = detailRoot.querySelector('.instagrab-magnific-detail-bar');
+        if (!existingBar || existingBar.dataset.mediaKey !== mainSrc) {
+          if (existingBar) existingBar.remove();
+
+          const titleEl = detailRoot.querySelector('h1') || document.querySelector('h1');
+          const titleText = (titleEl?.textContent || mainImg?.alt || document.title || 'Magnific Media').trim();
+          const isVideoItem = !!videoEl || /\/(?:free|premium)-video\//.test(path) || /\/video\//.test(path);
+          const isIconItem = (mainSrc && mainSrc.includes('cdn-icons-png')) || /\/(?:free-)?icon\//.test(path);
+
+          const bar = document.createElement('div');
+          bar.className = 'instagrab-magnific-detail-bar';
+          bar.dataset.mediaKey = mainSrc;
+
+          if (isVideoItem) {
+            const rawVidUrl = mainSrc ? mainSrc.replace('/small.mp4', '/large.mp4').replace('/medium.mp4', '/large.mp4') : '';
+            const rawThumbUrl = (videoEl && videoEl.poster) || (mainImg ? getMagnificFullImageUrl(mainImg, mainImg.src) : '');
+
+            const vidBtn = document.createElement('button');
+            vidBtn.type = 'button';
+            vidBtn.className = 'instagrab-magnific-detail-btn';
+            vidBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download Full Video (MP4)</span>`;
+            vidBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const targetUrl = buildMagnificActionUrl({
+                pageUrl: window.location.href,
+                mediaUrl: rawVidUrl,
+                mode: 'full',
+                type: 'video',
+                title: titleText
+              });
+              downloadMedia(targetUrl, vidBtn, 'Full Video (MP4)', { quality: 'best' });
+            });
+            bar.appendChild(vidBtn);
+
+            if (rawThumbUrl) {
+              const thumbBtn = document.createElement('button');
+              thumbBtn.type = 'button';
+              thumbBtn.className = 'instagrab-magnific-detail-btn secondary';
+              thumbBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download Video Thumbnail (HD)</span>`;
+              thumbBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetUrl = buildMagnificActionUrl({
+                  pageUrl: window.location.href,
+                  mediaUrl: rawThumbUrl,
+                  mode: 'full',
+                  type: 'thumbnail',
+                  title: titleText
+                });
+                downloadMedia(targetUrl, thumbBtn, 'Video Thumbnail', { quality: 'best' });
+              });
+              bar.appendChild(thumbBtn);
+            }
+          } else {
+            const fullImgUrl = getMagnificFullImageUrl(mainImg, mainSrc);
+
+            const dlBtn = document.createElement('button');
+            dlBtn.type = 'button';
+            dlBtn.className = 'instagrab-magnific-detail-btn';
+            dlBtn.innerHTML = `${DOWNLOAD_ICON} <span>${isIconItem ? 'Download Icon (512px PNG)' : 'Download Full Size (HD)'}</span>`;
+            dlBtn.title = 'Download full-resolution image with InstaGrab';
+            dlBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const targetUrl = buildMagnificActionUrl({
+                pageUrl: window.location.href,
+                mediaUrl: fullImgUrl,
+                mode: 'full',
+                type: isIconItem ? 'icon' : 'image',
+                title: titleText
+              });
+              downloadMedia(targetUrl, dlBtn, 'Full Size HD', { quality: 'best' });
+            });
+            bar.appendChild(dlBtn);
+
+            if (fullImgUrl) {
+              const copyBtn = document.createElement('button');
+              copyBtn.type = 'button';
+              copyBtn.className = 'instagrab-magnific-detail-btn secondary';
+              copyBtn.innerHTML = `${COPY_ICON} <span>Copy as PNG</span>`;
+              copyBtn.title = 'Copy high-res PNG directly to clipboard';
+              copyBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                copyImageAsPngToClipboard(fullImgUrl, copyBtn);
+              });
+              bar.appendChild(copyBtn);
+            }
+          }
+
+          if (titleEl && titleEl.parentElement) {
+            titleEl.parentElement.insertBefore(bar, titleEl.nextSibling);
+          } else if (mainImg && mainImg.parentElement) {
+            mainImg.parentElement.appendChild(bar);
+          } else {
+            detailRoot.prepend(bar);
+          }
+        }
+      }
+    }
+
+    // 2. Search / Carousel / Grid Cards -> Direct PREVIEW Download (as-is) without opening
+    const cardCandidates = document.querySelectorAll(
+      'figure, [data-cy*="resource-thumbnail"], div.showcase__item, a[href*=".htm"], a[href*="/free-"], a[href*="/premium-"], a[href*="/icon/"], a[href*="/video/"]'
+    );
+
+    cardCandidates.forEach((el) => {
+      if (detailModal && detailModal.contains(el)) return;
+
+      const card = el.tagName === 'A' ? (el.closest('figure, [data-cy*="resource-thumbnail"], div.showcase__item, li') || el.parentElement || el) : el;
+      if (!card || card.dataset.instagrabInjected) return;
+
+      const videoEl = card.querySelector('video');
+      const imgEl = card.querySelector('img');
+      if (!videoEl && !imgEl) return;
+
+      // Skip tiny UI icons/avatars
+      const imgSrc = imgEl ? (imgEl.currentSrc || imgEl.src || imgEl.getAttribute('data-src') || '') : '';
+      if (!videoEl && (!imgSrc || imgSrc.includes('avatar') || imgSrc.includes('profile'))) return;
+
+      card.dataset.instagrabInjected = 'true';
+      const style = window.getComputedStyle(card);
+      if (style.position === 'static') card.classList.add('instagrab-rel-card');
+
+      const linkEl = card.tagName === 'A' ? card : card.querySelector('a[href]');
+      const itemPageUrl = (linkEl && linkEl.href) ? linkEl.href : window.location.href;
+      const cardTitle = (imgEl?.alt || linkEl?.getAttribute('title') || linkEl?.textContent || 'Magnific Preview').trim();
+
+      const isVideoCard = !!videoEl || /\/(?:free|premium)-video\//.test(itemPageUrl) || /\/video\//.test(itemPageUrl);
+      const isIconCard = imgSrc.includes('cdn-icons-png') || /\/(?:free-)?icon\//.test(itemPageUrl);
+
+      const bar = document.createElement('div');
+      bar.className = 'instagrab-card-bar';
+
+      if (isVideoCard) {
+        // Video Button + Video Thumbnail Button
+        const vidBtn = document.createElement('button');
+        vidBtn.type = 'button';
+        vidBtn.className = 'instagrab-card-pill';
+        vidBtn.innerHTML = `${DOWNLOAD_ICON} <span>Video</span>`;
+        vidBtn.title = 'Download Video (MP4)';
+        vidBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const vEl = card.querySelector('video');
+          const vSrc = vEl ? (vEl.currentSrc || vEl.src || vEl.querySelector('source')?.src || '') : '';
+          const targetUrl = buildMagnificActionUrl({
+            pageUrl: itemPageUrl,
+            mediaUrl: vSrc,
+            mode: 'preview',
+            type: 'video',
+            title: cardTitle
+          });
+          downloadMedia(targetUrl, vidBtn, 'Video (MP4)', { quality: 'best' });
+        });
+        bar.appendChild(vidBtn);
+
+        const thumbBtn = document.createElement('button');
+        thumbBtn.type = 'button';
+        thumbBtn.className = 'instagrab-card-pill secondary';
+        thumbBtn.innerHTML = `${DOWNLOAD_ICON} <span>Thumb</span>`;
+        thumbBtn.title = 'Download Video Thumbnail Image';
+        thumbBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const vEl = card.querySelector('video');
+          const iEl = card.querySelector('img');
+          const tSrc = (vEl && vEl.poster) || (iEl && (iEl.currentSrc || iEl.src)) || imgSrc;
+          const targetUrl = buildMagnificActionUrl({
+            pageUrl: itemPageUrl,
+            mediaUrl: tSrc,
+            mode: 'preview',
+            type: 'thumbnail',
+            title: cardTitle
+          });
+          downloadMedia(targetUrl, thumbBtn, 'Thumbnail', { quality: '720p' });
+        });
+        bar.appendChild(thumbBtn);
+      } else if (isIconCard) {
+        // Icon PNG Download + Copy PNG
+        const iconPngUrl = imgSrc.replace(/\/(?:128|256)\//, '/512/');
+        const pngBtn = document.createElement('button');
+        pngBtn.type = 'button';
+        pngBtn.className = 'instagrab-card-pill';
+        pngBtn.innerHTML = `${DOWNLOAD_ICON} <span>PNG</span>`;
+        pngBtn.title = 'Download Icon as 512px PNG';
+        pngBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const targetUrl = buildMagnificActionUrl({
+            pageUrl: itemPageUrl,
+            mediaUrl: iconPngUrl,
+            mode: 'full',
+            type: 'icon',
+            title: cardTitle
+          });
+          downloadMedia(targetUrl, pngBtn, 'Icon PNG', { quality: 'best' });
+        });
+        bar.appendChild(pngBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'instagrab-card-pill secondary';
+        copyBtn.innerHTML = `${COPY_ICON} <span>Copy</span>`;
+        copyBtn.title = 'Copy Icon as PNG to Clipboard';
+        copyBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          copyImageAsPngToClipboard(iconPngUrl, copyBtn);
+        });
+        bar.appendChild(copyBtn);
+      } else {
+        // Standard Image / Vector / AI-Image Card -> Download Preview as-is!
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'instagrab-card-pill';
+        prevBtn.innerHTML = `${DOWNLOAD_ICON} <span>Preview</span>`;
+        prevBtn.title = 'Download Preview Image as-is (Open image to download Full Size HD)';
+        prevBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const currentImg = card.querySelector('img');
+          const previewSrc = (currentImg && (currentImg.currentSrc || currentImg.src)) || imgSrc;
+          const targetUrl = buildMagnificActionUrl({
+            pageUrl: itemPageUrl,
+            mediaUrl: previewSrc,
+            mode: 'preview',
+            type: 'image',
+            title: cardTitle
+          });
+          downloadMedia(targetUrl, prevBtn, 'Preview Image', { quality: '720p' });
+        });
+        bar.appendChild(prevBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'instagrab-card-pill secondary';
+        copyBtn.innerHTML = `${COPY_ICON} <span>Copy</span>`;
+        copyBtn.title = 'Copy Preview Image as PNG to Clipboard';
+        copyBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const currentImg = card.querySelector('img');
+          const previewSrc = (currentImg && (currentImg.currentSrc || currentImg.src)) || imgSrc;
+          copyImageAsPngToClipboard(previewSrc, copyBtn);
+        });
+        bar.appendChild(copyBtn);
+      }
+
+      card.appendChild(bar);
+    });
+  }
+
+  // ================= FLATICON MODULE =================
+  // Supports:
+  // - Search & Pack Grid Cards (https://www.flaticon.com/search?word=fail): 512px PNG Download + 512px PNG Copy to Clipboard
+  // - Opened Icon Detail Page / Modal: 512px PNG Download + 512px PNG Copy to Clipboard
+  function upgradeFlaticonTo512(rawImgSrc, linkHref) {
+    if (rawImgSrc && rawImgSrc.includes('cdn-icons-png.flaticon.com')) {
+      return rawImgSrc.split('?')[0].replace(/\/(?:64|128|256)\//, '/512/');
+    }
+    const source = linkHref || rawImgSrc || '';
+    const m = source.match(/_(\d+)(?:\.htm)?(?:[/?#]|$)/) || source.match(/\/(\d+)\.png/);
+    if (m && m[1]) {
+      const iconId = m[1];
+      const folder = iconId.length > 3 ? iconId.slice(0, -3) : '0';
+      return `https://cdn-icons-png.flaticon.com/512/${folder}/${iconId}.png`;
+    }
+    return rawImgSrc || '';
+  }
+
+  function scanFlaticon() {
+    // 1. Search / Pack Grid Icon Cards (e.g. https://www.flaticon.com/search?word=fail)
+    const iconCards = document.querySelectorAll('li.icon--item, div.icon--holder, a.view.link-icon-detail, a[href*="/free-icon/"], a[href*="/free-animated-icon/"]');
+    iconCards.forEach((el) => {
+      const card = el.closest('li.icon--item, div.icon--holder') || (el.tagName === 'A' ? el.parentElement : el);
+      if (!card || card.dataset.instagrabInjected) return;
+
+      const imgEl = card.querySelector('img');
+      const linkEl = card.tagName === 'A' ? card : card.querySelector('a[href*="/free-icon/"], a[href*="/free-animated-icon/"], a[href]');
+      if (!imgEl && !linkEl) return;
+
+      const rawSrc = imgEl ? (imgEl.currentSrc || imgEl.src || imgEl.getAttribute('data-src') || '') : '';
+      const linkHref = linkEl ? linkEl.href : window.location.href;
+      const png512Url = upgradeFlaticonTo512(rawSrc, linkHref);
+      if (!png512Url) return;
+
+      card.dataset.instagrabInjected = 'true';
+      const style = window.getComputedStyle(card);
+      if (style.position === 'static') card.classList.add('instagrab-rel-card');
+
+      const iconTitle = (imgEl?.alt || linkEl?.getAttribute('title') || 'Flaticon Icon').replace(/\s+free\s+icon$/i, '').trim();
+
+      const bar = document.createElement('div');
+      bar.className = 'instagrab-flaticon-bar';
+
+      const dlBtn = document.createElement('button');
+      dlBtn.type = 'button';
+      dlBtn.className = 'instagrab-card-pill';
+      dlBtn.innerHTML = `${DOWNLOAD_ICON} <span>PNG</span>`;
+      dlBtn.title = 'Download 512px Transparent PNG';
+      dlBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const u = new URL(linkHref || window.location.href, window.location.origin);
+        u.searchParams.set('instagrab_media', png512Url);
+        u.searchParams.set('instagrab_title', iconTitle);
+        downloadMedia(u.href, dlBtn, '512px PNG', { quality: 'best' });
+      });
+      bar.appendChild(dlBtn);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'instagrab-card-pill secondary';
+      copyBtn.innerHTML = `${COPY_ICON} <span>Copy</span>`;
+      copyBtn.title = 'Copy 512px Transparent PNG to Clipboard';
+      copyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        copyImageAsPngToClipboard(png512Url, copyBtn);
+      });
+      bar.appendChild(copyBtn);
+
+      card.appendChild(bar);
+    });
+
+    // 2. Opened Icon Detail Page / Modal (/free-icon/...)
+    const path = window.location.pathname;
+    if (/\/(?:free-icon|free-animated-icon|icon)\/[^/]+/.test(path)) {
+      const detailImg = document.querySelector('img[src*="cdn-icons-png.flaticon.com/512/"], div.detail img[src*="cdn-icons-png.flaticon.com"], section img[src*="cdn-icons-png.flaticon.com"]');
+      const png512Url = upgradeFlaticonTo512(detailImg?.src || '', window.location.href);
+      if (png512Url && !document.getElementById('instagrab-flaticon-detail-bar')) {
+        const h1 = document.querySelector('h1');
+        const titleText = (h1?.textContent || detailImg?.alt || 'Flaticon Icon').trim();
+
+        const bar = document.createElement('div');
+        bar.id = 'instagrab-flaticon-detail-bar';
+        bar.className = 'instagrab-magnific-detail-bar';
+
+        const dlBtn = document.createElement('button');
+        dlBtn.type = 'button';
+        dlBtn.className = 'instagrab-magnific-detail-btn';
+        dlBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download PNG (512px)</span>`;
+        dlBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const u = new URL(window.location.href);
+          u.searchParams.set('instagrab_media', png512Url);
+          u.searchParams.set('instagrab_title', titleText);
+          downloadMedia(u.href, dlBtn, '512px PNG', { quality: 'best' });
+        });
+        bar.appendChild(dlBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'instagrab-magnific-detail-btn secondary';
+        copyBtn.innerHTML = `${COPY_ICON} <span>Copy PNG to Clipboard</span>`;
+        copyBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          copyImageAsPngToClipboard(png512Url, copyBtn);
+        });
+        bar.appendChild(copyBtn);
+
+        if (h1 && h1.parentElement) {
+          h1.parentElement.insertBefore(bar, h1.nextSibling);
+        } else if (detailImg && detailImg.parentElement) {
+          detailImg.parentElement.appendChild(bar);
+        }
+      }
+    }
+  }
+
+  // ================= SPOTIFY MODULE =================
+  // Supports:
+  // - Single Track MP3 download on every track row ([data-testid="tracklist-row"]), single track page, and bottom player bar
+  // - Bulk Playlist / Album download (.ZIP or individual MP3s) on /playlist/<id> and /album/<id>
+  function scanSpotify() {
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    const spMatch = cleanPath.match(/\/(?:intl-[a-zA-Z-]+\/)?(track|playlist|album)\/([A-Za-z0-9]+)/);
+    const pageType = spMatch ? spMatch[1] : null;
+    const pageId = spMatch ? spMatch[2] : null;
+    const canonicalPageUrl = (pageType && pageId) ? `https://open.spotify.com/${pageType}/${pageId}` : window.location.href.split('?')[0];
+
+    // 1. Main Action Bar on Playlist, Album, or Single Track Page
+    const actionBar = document.querySelector('[data-testid="action-bar-row"]');
+    if (actionBar && pageType && pageId) {
+      const existingBar = document.getElementById('instagrab-spotify-action-wrap');
+      if (!existingBar || existingBar.dataset.pageUrl !== canonicalPageUrl) {
+        if (existingBar) existingBar.remove();
+
+        const wrap = document.createElement('div');
+        wrap.id = 'instagrab-spotify-action-wrap';
+        wrap.className = 'instagrab-spotify-action-wrap';
+        wrap.dataset.pageUrl = canonicalPageUrl;
+
+        if (pageType === 'playlist' || pageType === 'album') {
+          const labelNoun = pageType === 'album' ? 'Album' : 'Playlist';
+
+          const zipBtn = document.createElement('button');
+          zipBtn.type = 'button';
+          zipBtn.className = 'instagrab-spotify-main-btn';
+          zipBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download ${labelNoun} (.ZIP)</span>`;
+          zipBtn.title = `Bulk download entire Spotify ${labelNoun.toLowerCase()} as a .ZIP of 320kbps MP3s`;
+          zipBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            downloadMedia(canonicalPageUrl, zipBtn, `${labelNoun} (.ZIP)`, { format_type: 'audio', as_zip: true });
+          });
+          wrap.appendChild(zipBtn);
+
+          const multiBtn = document.createElement('button');
+          multiBtn.type = 'button';
+          multiBtn.className = 'instagrab-spotify-main-btn secondary';
+          multiBtn.innerHTML = `${DOWNLOAD_ICON} <span>All MP3s</span>`;
+          multiBtn.title = `Download all tracks in ${labelNoun.toLowerCase()} one by one as MP3s`;
+          multiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            downloadMedia(canonicalPageUrl, multiBtn, `All ${labelNoun} MP3s`, { format_type: 'audio', as_zip: false });
+          });
+          wrap.appendChild(multiBtn);
+        } else if (pageType === 'track') {
+          const trackBtn = document.createElement('button');
+          trackBtn.type = 'button';
+          trackBtn.className = 'instagrab-spotify-main-btn';
+          trackBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download Track (MP3)</span>`;
+          trackBtn.title = 'Download 320kbps MP3 with InstaGrab';
+          trackBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            downloadMedia(canonicalPageUrl, trackBtn, 'Spotify MP3', { format_type: 'audio' });
+          });
+          wrap.appendChild(trackBtn);
+        }
+
+        actionBar.appendChild(wrap);
+      }
+    }
+
+    // 2. Individual Track Rows ([data-testid="tracklist-row"])
+    const rows = document.querySelectorAll('[data-testid="tracklist-row"]');
+    rows.forEach((row, rowIdx) => {
+      if (row.dataset.instagrabInjected) return;
+      row.dataset.instagrabInjected = 'true';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'instagrab-spotify-row-btn';
+      btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
+      btn.title = 'Download this track as 320kbps MP3';
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const trackLink = row.querySelector('a[href*="/track/"]');
+        if (trackLink && trackLink.getAttribute('href')) {
+          const m = trackLink.getAttribute('href').match(/\/track\/([A-Za-z0-9]+)/);
+          if (m && m[1]) {
+            downloadMedia(`https://open.spotify.com/track/${m[1]}`, btn, 'Track MP3', { format_type: 'audio' });
+            return;
+          }
+        }
+        // Fallback for album rows without explicit <a href="/track/...">: use 1-based item_index on the album/playlist URL
+        downloadMedia(canonicalPageUrl, btn, `Track #${rowIdx + 1} MP3`, { format_type: 'audio', item_index: rowIdx + 1, as_zip: false });
+      });
+
+      const moreBtn = row.querySelector('button[data-testid="more-button"], button[aria-label*="More"]');
+      if (moreBtn && moreBtn.parentElement) {
+        moreBtn.parentElement.insertBefore(btn, moreBtn);
+      } else {
+        row.appendChild(btn);
+      }
+    });
+
+    // 3. Bottom Now-Playing Bar ([data-testid="now-playing-widget"])
+    const nowPlaying = document.querySelector('[data-testid="now-playing-widget"]');
+    if (nowPlaying && !document.getElementById('instagrab-spotify-now-btn')) {
+      const btn = document.createElement('button');
+      btn.id = 'instagrab-spotify-now-btn';
+      btn.type = 'button';
+      btn.className = 'instagrab-spotify-row-btn';
+      btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
+      btn.title = 'Download currently playing track as MP3';
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const npLink = nowPlaying.querySelector('a[href*="/track/"]');
+        if (npLink && npLink.getAttribute('href')) {
+          const m = npLink.getAttribute('href').match(/\/track\/([A-Za-z0-9]+)/);
+          if (m && m[1]) {
+            downloadMedia(`https://open.spotify.com/track/${m[1]}`, btn, 'Now Playing MP3', { format_type: 'audio' });
+            return;
+          }
+        }
+        downloadMedia(canonicalPageUrl, btn, 'Spotify MP3', { format_type: 'audio' });
+      });
+
+      nowPlaying.appendChild(btn);
+    }
+  }
+
   // ================= DISPATCHER & OBSERVER =================
   function scanAll() {
     const host = window.location.hostname.toLowerCase();
@@ -956,6 +1722,12 @@
       scanEnvato();
     } else if (host.includes('epidemicsound.com')) {
       scanEpidemic();
+    } else if (host.includes('magnific.') || host.includes('freepik.com')) {
+      scanMagnific();
+    } else if (host.includes('flaticon.com')) {
+      scanFlaticon();
+    } else if (host.includes('spotify.com')) {
+      scanSpotify();
     }
   }
 
@@ -1012,5 +1784,5 @@
     } catch (_) {}
   }
 
-  console.log('[InstaGrab] Universal media downloader active (Pinterest, YouTube, Instagram & Envato Audio)');
+  console.log('[InstaGrab] Universal media downloader active (Pinterest, YouTube, Instagram, Spotify, Magnific, Flaticon, Envato & Epidemic Sound)');
 })();

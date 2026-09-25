@@ -21,6 +21,15 @@ export function DownloadButton({ onClick, disabled, loading, formatType = 'video
       );
     }
 
+    if (mediaType === 'carousel') {
+      return (
+        <>
+          <Layers className="w-5 h-5 mr-2" />
+          <span>Download All as .ZIP {carouselCount ? `(${carouselCount})` : ''}</span>
+        </>
+      );
+    }
+
     if (formatType === 'audio' || mediaType === 'audio' || mediaType === 'sfx') {
       return (
         <>
@@ -34,16 +43,7 @@ export function DownloadButton({ onClick, disabled, loading, formatType = 'video
       return (
         <>
           <ImageIcon className="w-5 h-5 mr-2" />
-          <span>Download Photo</span>
-        </>
-      );
-    }
-
-    if (mediaType === 'carousel') {
-      return (
-        <>
-          <Layers className="w-5 h-5 mr-2" />
-          <span>Download All as .ZIP {carouselCount ? `(${carouselCount})` : ''}</span>
+          <span>Download Image / PNG</span>
         </>
       );
     }

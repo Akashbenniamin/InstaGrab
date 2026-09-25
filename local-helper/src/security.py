@@ -130,9 +130,48 @@ def validate_media_url(url: str) -> tuple[bool, str, str]:
         path_clean = parsed.path.rstrip('/')
         if re.search(r'/(?:music/tracks|sound-effects/tracks|track)/[^/]+$', path_clean):
             return True, "", "epidemic"
+        if ('term=' in parsed.query or 'instagrab_title=' in parsed.query):
+            return True, "", "epidemic"
         return False, "Invalid Epidemic Sound URL. Please provide a link to a specific Epidemic Sound Music or Sound Effect track.", "epidemic"
 
-    return False, "Unsupported platform. Please enter an Instagram, YouTube, Pinterest, Envato, or Epidemic Sound URL.", "unknown"
+    # 6. Magnific / Freepik (Images, Vectors, Photos, Videos, Video Thumbnails, Icons)
+    if any(d in netloc for d in ['img.freepik.com', 'videocdn.cdnpk.net', 'fps.cdnpk.net', 'cdnpk.net', 'cdn-icons-png.freepik.com']):
+        return True, "", "magnific"
+
+    if any(d in netloc for d in ['magnific.com', 'magnific.ai', 'freepik.com']):
+        path_clean = parsed.path.rstrip('/')
+        if (
+            path_clean.endswith('.htm')
+            or re.search(r'/(?:free|premium)-(?:photo|vector|psd|video|ai-image|icon)/', path_clean)
+            or re.search(r'/(?:icon|animated-icon|video|serie)/', path_clean)
+            or 'instagrab_media=' in parsed.query
+            or ('/search' in path_clean and ('term=' in parsed.query or 'word=' in parsed.query))
+        ):
+            return True, "", "magnific"
+        return False, "Invalid Magnific URL. Please provide a link to an image, vector, video, icon, or search query.", "magnific"
+
+    # 7. Flaticon (PNG Icons, Animated Icons, Packs)
+    if any(d in netloc for d in ['cdn-icons-png.flaticon.com', 'cdn-icons-mp4.flaticon.com', 'cdn-icons-gif.flaticon.com', 'cdn-icons.flaticon.com']):
+        return True, "", "flaticon"
+
+    if 'flaticon.com' in netloc:
+        path_clean = parsed.path.rstrip('/')
+        if (
+            re.search(r'/(?:free-icon|free-animated-icon|icon|packs|stickers-pack)/[^/]+', path_clean)
+            or 'instagrab_media=' in parsed.query
+            or ('/search' in path_clean and 'word=' in parsed.query)
+        ):
+            return True, "", "flaticon"
+        return False, "Invalid Flaticon URL. Please provide a link to a Flaticon icon or search page.", "flaticon"
+
+    # 8. Spotify (Single Track, Playlist, Album)
+    if 'open.spotify.com' in netloc or 'play.spotify.com' in netloc:
+        path_clean = parsed.path.rstrip('/')
+        if re.search(r'/(?:intl-[a-zA-Z-]+/)?(?:embed/)?(?:track|playlist|album)/[A-Za-z0-9]+', path_clean):
+            return True, "", "spotify"
+        return False, "Invalid Spotify URL. Please provide a link to a Spotify Track, Playlist, or Album.", "spotify"
+
+    return False, "Unsupported platform. Please enter an Instagram, YouTube, Pinterest, Envato, Epidemic Sound, Magnific, Flaticon, or Spotify URL.", "unknown"
 
 
 def validate_instagram_url(url: str) -> tuple[bool, str]:

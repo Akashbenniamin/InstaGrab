@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CarouselMediaItem } from '../types';
-import { Layers, Download, Image as ImageIcon, Video, Archive, Loader2, Check } from 'lucide-react';
+import { Layers, Download, Image as ImageIcon, Video, Music, Archive, Loader2, Check } from 'lucide-react';
 
 interface Props {
   items: CarouselMediaItem[];
@@ -31,23 +31,25 @@ export const CarouselGallery: React.FC<Props> = ({
 
   if (!items || items.length === 0) return null;
 
+  const isAudioPlaylist = items[0]?.media_type === 'audio';
+
   return (
     <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
       {/* Header bar with bulk action buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-blue-500 flex items-center justify-center">
-            <Layers className="w-4 h-4" />
+            {isAudioPlaylist ? <Music className="w-4 h-4 text-emerald-500" /> : <Layers className="w-4 h-4" />}
           </div>
           <div>
             <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-              Carousel Slides
+              {isAudioPlaylist ? 'Playlist / Album Tracks' : 'Carousel Slides'}
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[var(--badge-bg)] text-[var(--text-secondary)]">
-                {items.length} media items
+                {items.length} {isAudioPlaylist ? 'tracks' : 'media items'}
               </span>
             </h3>
             <p className="text-[11px] text-[var(--text-secondary)]">
-              Download individual slides or get the full collection
+              {isAudioPlaylist ? 'Download individual MP3 tracks or the full playlist archive' : 'Download individual slides or get the full collection'}
             </p>
           </div>
         </div>
@@ -64,13 +66,13 @@ export const CarouselGallery: React.FC<Props> = ({
               color: 'var(--btn-primary-text)'
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all transform hover:opacity-95 active:scale-97 cursor-pointer shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
-            title="Package all carousel photos & videos into a single .ZIP archive"
+            title="Package all items into a single .ZIP archive"
           >
             <Archive className="w-3.5 h-3.5" />
             <span>Download All as .ZIP</span>
           </button>
 
-          {/* Download All as Images (One by one) */}
+          {/* Download All (One by one) */}
           <button
             type="button"
             onClick={onDownloadAllImages}
@@ -85,7 +87,7 @@ export const CarouselGallery: React.FC<Props> = ({
       </div>
 
       {/* Grid of Slide Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[420px] overflow-y-auto pr-1">
         {items.map((item) => {
           const isItemDownloading = downloadingIndex === item.index;
           const isItemDownloaded = downloadedIndices.has(item.index);
@@ -100,10 +102,12 @@ export const CarouselGallery: React.FC<Props> = ({
                 {item.thumbnail ? (
                   <img
                     src={item.thumbnail}
-                    alt={`Slide #${item.index + 1}`}
+                    alt={item.title || `Item #${item.index + 1}`}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     loading="lazy"
                   />
+                ) : item.media_type === 'audio' ? (
+                  <Music className="w-8 h-8 opacity-40 text-emerald-500" />
                 ) : (
                   <ImageIcon className="w-8 h-8 opacity-30 text-[var(--text-secondary)]" />
                 )}
@@ -115,11 +119,15 @@ export const CarouselGallery: React.FC<Props> = ({
 
                 {/* Top-Right: Media Type Badge */}
                 <span className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold flex items-center gap-1 backdrop-blur-xs text-white ${
-                  item.media_type === 'video' ? 'bg-fuchsia-600/90' : 'bg-teal-700/90'
+                  item.media_type === 'video' ? 'bg-fuchsia-600/90' : (item.media_type === 'audio' ? 'bg-emerald-600/90' : 'bg-teal-700/90')
                 }`}>
                   {item.media_type === 'video' ? (
                     <>
                       <Video className="w-2.5 h-2.5" /> Video
+                    </>
+                  ) : item.media_type === 'audio' ? (
+                    <>
+                      <Music className="w-2.5 h-2.5" /> MP3
                     </>
                   ) : (
                     <>
@@ -129,8 +137,13 @@ export const CarouselGallery: React.FC<Props> = ({
                 </span>
               </div>
 
-              {/* Individual Card Download Button */}
-              <div className="p-2 bg-[var(--bg-card)]">
+              {/* Individual Card Info & Download Button */}
+              <div className="p-2 bg-[var(--bg-card)] flex flex-col gap-1.5">
+                {item.title && (
+                  <p className="text-[10px] font-semibold text-[var(--text-primary)] line-clamp-1" title={item.title}>
+                    {item.title}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => handleSingleDownload(item.index)}
@@ -140,7 +153,7 @@ export const CarouselGallery: React.FC<Props> = ({
                       ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                       : 'bg-[var(--bg-main)] text-[var(--text-primary)] border border-[var(--border-color)] hover:border-gray-400 dark:hover:border-gray-600 active:scale-95'
                   } disabled:opacity-60 disabled:cursor-not-allowed`}
-                  title={`Download slide #${item.index + 1}`}
+                  title={item.title ? `Download ${item.title}` : `Download item #${item.index + 1}`}
                 >
                   {isItemDownloading ? (
                     <>

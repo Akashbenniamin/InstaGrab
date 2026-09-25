@@ -4,12 +4,15 @@ export type FormatType = 'video' | 'audio';
 export type VideoQuality = 'best' | '1080p' | '720p' | '480p' | '360p';
 export type AudioQuality = 'best' | '320k' | '192k' | '128k';
 export type QualityOption = VideoQuality | AudioQuality;
-export type PlatformType = 'instagram' | 'youtube' | 'pinterest' | 'envato' | 'epidemic' | 'unknown';
+export type PlatformType = 'instagram' | 'youtube' | 'pinterest' | 'envato' | 'epidemic' | 'magnific' | 'flaticon' | 'spotify' | 'unknown';
 
 export interface CarouselMediaItem {
   index: number;
-  media_type: 'photo' | 'video';
+  media_type: 'photo' | 'video' | 'audio';
   thumbnail: string;
+  title?: string;
+  uploader?: string;
+  duration?: number;
   url?: string;
   filename?: string;
   width?: number;

@@ -68,12 +68,52 @@ def test_valid_epidemic_urls():
         "https://www.epidemicsound.com/sound-effects/tracks/16bb9f7c-282e-45f4-a253-40ee6d605412/",
         "https://www.epidemicsound.com/music/tracks/f3f4dc47-bf55-4cd1-ac44-d650d157d156/",
         "https://www.epidemicsound.com/track/some-cool-song/",
+        "https://www.epidemicsound.com/sound-effects/search?term=pop",
         "https://audiocdn.epidemicsound.com/lqmp3/01KGPFWR0G2E9K5BTRM61DK4B8.mp3"
     ]
     for url in valid_urls:
         valid, msg, platform = validate_media_url(url)
         assert valid, f"Failed on valid Epidemic Sound URL: {url} - {msg}"
         assert platform == "epidemic"
+
+def test_valid_magnific_urls():
+    valid_urls = [
+        "https://www.magnific.com/free-photo/fresh-cranberries_144627-16958.htm",
+        "https://www.magnific.com/free-vector/red-cranberry-illustration_123456.htm",
+        "https://www.magnific.com/free-video/slow-motion-berries_987654",
+        "https://www.magnific.com/icon/cranberry_123456",
+        "https://img.freepik.com/free-photo/fresh-cranberries_144627-16958.jpg?w=740",
+        "https://videocdn.cdnpk.net/videos/abc-123/horizontal/previews/watermarked/large.mp4"
+    ]
+    for url in valid_urls:
+        valid, msg, platform = validate_media_url(url)
+        assert valid, f"Failed on valid Magnific URL: {url} - {msg}"
+        assert platform == "magnific"
+
+def test_valid_flaticon_urls():
+    valid_urls = [
+        "https://www.flaticon.com/free-icon/error_1828843",
+        "https://www.flaticon.com/free-icon/fail_5261234?term=fail&page=1",
+        "https://www.flaticon.com/search?word=fail",
+        "https://cdn-icons-png.flaticon.com/512/1828/1828843.png",
+        "https://cdn-icons-png.flaticon.com/128/1828/1828843.png"
+    ]
+    for url in valid_urls:
+        valid, msg, platform = validate_media_url(url)
+        assert valid, f"Failed on valid Flaticon URL: {url} - {msg}"
+        assert platform == "flaticon"
+
+def test_valid_spotify_urls():
+    valid_urls = [
+        "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT",
+        "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
+        "https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy",
+        "https://open.spotify.com/intl-en/track/4cOdK2wGLETKBW3PvgPWqT?si=123456"
+    ]
+    for url in valid_urls:
+        valid, msg, platform = validate_media_url(url)
+        assert valid, f"Failed on valid Spotify URL: {url} - {msg}"
+        assert platform == "spotify"
 
 def test_invalid_urls():
     invalid_urls = [
@@ -87,7 +127,9 @@ def test_invalid_urls():
         "https://elements.envato.com/sound-effects",
         "https://elements.envato.com/audio/royalty-free-music",
         "https://www.epidemicsound.com/sound-effects/",
-        "https://www.epidemicsound.com/music/featured/"
+        "https://www.epidemicsound.com/music/featured/",
+        "https://www.flaticon.com/",
+        "https://open.spotify.com/user/12345"
     ]
     for url in invalid_urls:
         valid, _, _ = validate_media_url(url)

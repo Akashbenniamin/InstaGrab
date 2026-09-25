@@ -206,12 +206,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function applyEnvatoAudioModeIfNeeded(uStr) {
-    if (uStr && (uStr.includes('envato.com') || uStr.includes('audiojungle.net') || uStr.includes('envatousercontent.com') || uStr.includes('epidemicsound.com'))) {
+    if (uStr && (uStr.includes('envato.com') || uStr.includes('audiojungle.net') || uStr.includes('envatousercontent.com') || uStr.includes('epidemicsound.com') || uStr.includes('spotify.com'))) {
       currentFormat = 'audio';
       btnAudio.classList.add('active');
       btnVideo.classList.remove('active');
       updateQualityOptions('audio');
-      btnText.textContent = 'Download Audio (MP3)';
+      btnText.textContent = (/spotify\.com\/(?:playlist|album)\//.test(uStr)) ? 'Download Playlist (.ZIP)' : 'Download Audio (MP3)';
     }
   }
 
@@ -235,9 +235,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (res && res.url) {
           urlInput.value = res.url;
           applyEnvatoAudioModeIfNeeded(res.url);
-          const platformLabel = res.platform === 'instagram'
-            ? 'Reel / Post'
-            : (res.platform === 'youtube' ? 'Video' : (res.platform === 'envato' ? 'Envato Audio / SFX' : (res.platform === 'epidemic' ? 'Epidemic Sound Track' : 'Pin')));
+          const platformMap = {
+            instagram: 'Reel / Post',
+            youtube: 'Video',
+            envato: 'Envato Audio / SFX',
+            epidemic: 'Epidemic Sound Track',
+            magnific: 'Magnific Media',
+            flaticon: 'Flaticon PNG Icon',
+            spotify: /\/(?:playlist|album)\//.test(res.url) ? 'Spotify Playlist / Album' : 'Spotify Track',
+            pinterest: 'Pin'
+          };
+          const platformLabel = platformMap[res.platform] || 'Media';
           detectedPill.textContent = `🎯 Active ${platformLabel} detected on page`;
           detectedPill.style.display = 'flex';
         } else {
@@ -268,7 +276,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (urlInput.value) return;
     try {
       const text = await navigator.clipboard.readText();
-      if (text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.') || text.includes('envato.com') || text.includes('audiojungle.net') || text.includes('envatousercontent.com') || text.includes('epidemicsound.com'))) {
+      if (text && (
+        text.includes('instagram.com') ||
+        text.includes('youtu') ||
+        text.includes('pinterest.') ||
+        text.includes('envato.com') ||
+        text.includes('audiojungle.net') ||
+        text.includes('envatousercontent.com') ||
+        text.includes('epidemicsound.com') ||
+        text.includes('magnific.') ||
+        text.includes('freepik.com') ||
+        text.includes('flaticon.com') ||
+        text.includes('spotify.com')
+      )) {
         const clean = normalizeMediaUrl(text);
         if (clean && !isGenericHomepage(clean)) {
           urlInput.value = clean;
@@ -299,7 +319,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         return !(/[a-zA-Z0-9-]+-[A-Za-z0-9]{6,10}$/.test(p) || /\/item\/[^/]+\/\d+/.test(p));
       }
       if (u.hostname.includes('epidemicsound.com') && !u.hostname.includes('audiocdn.')) {
+        if (u.searchParams.has('term') || u.searchParams.has('instagrab_title')) return false;
         return !(/\/(?:music|sound-effects)\/tracks\/[a-fA-F0-9-]{10,}/.test(p) || /\/track\/[A-Za-z0-9_-]+/.test(p));
+      }
+      if (u.hostname.includes('magnific.') || u.hostname.includes('freepik.com')) {
+        if (u.searchParams.has('instagrab_media') || u.searchParams.has('term') || u.searchParams.has('word')) return false;
+        return !(p.endsWith('.htm') || /\/(?:free|premium)-(?:photo|vector|psd|video|ai-image|icon)\//.test(p) || /\/(?:icon|animated-icon|video|serie)\//.test(p));
+      }
+      if (u.hostname.includes('flaticon.com') && !u.hostname.includes('cdn-icons')) {
+        if (u.searchParams.has('instagrab_media') || u.searchParams.has('word')) return false;
+        return !(/\/(?:free-icon|free-animated-icon|icon|packs|stickers-pack)\/[^/]+/.test(p));
+      }
+      if (u.hostname.includes('spotify.com')) {
+        return !(/\/(?:track|playlist|album)\/[A-Za-z0-9]+/.test(p));
       }
     } catch {}
     return false;
