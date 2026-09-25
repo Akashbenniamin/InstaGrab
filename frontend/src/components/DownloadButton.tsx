@@ -21,11 +21,11 @@ export function DownloadButton({ onClick, disabled, loading, formatType = 'video
       );
     }
 
-    if (formatType === 'audio') {
+    if (formatType === 'audio' || mediaType === 'audio' || mediaType === 'sfx') {
       return (
         <>
           <Music className="w-5 h-5 mr-2" />
-          <span>Download Audio (MP3)</span>
+          <span>Download Audio / SFX (MP3)</span>
         </>
       );
     }

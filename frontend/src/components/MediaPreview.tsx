@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Play, Image as ImageIcon, Video, Loader2, Layers, Bookmark, Sparkles, Film, ChevronLeft, ChevronRight, Music } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 import { validateMediaUrl } from '../services/urlValidator';
 import { CarouselMediaItem } from '../types';
@@ -57,7 +57,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     if (onMediaDetected) {
       onMediaDetected({
         contentType: val.contentType,
-        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : undefined))
+        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : (val.contentType === 'audio' ? 'audio' : undefined)))
       });
     }
 
@@ -74,6 +74,13 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
           media_type: val.contentType === 'shorts' ? 'shorts' : 'video'
         });
       }
+    } else if (val.platform === 'envato') {
+      setYtId(null);
+      setInfo({
+        title: 'Envato Audio / SFX Track',
+        platform: 'envato',
+        media_type: 'audio'
+      });
     } else {
       setYtId(null);
       setInfo(null);
@@ -85,7 +92,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
 
     helperApi.getMediaInfo(trimmed).then(res => {
       if (!isCancelled && res && !res.error) {
-        const resolvedMediaType = res.media_type || (val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : 'video')));
+        const resolvedMediaType = res.media_type || (val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : (val.contentType === 'audio' ? 'audio' : 'video'))));
         setActiveSlide(0);
         setInfo(prev => ({
           ...prev,
@@ -129,6 +136,13 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
 
   const getMediaBadge = () => {
     const type = info?.media_type || detectedContentType;
+    if (type === 'audio' || type === 'sfx' || info?.platform === 'envato') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-emerald-600 to-lime-600 text-white shadow-xs">
+          <Music className="w-2.5 h-2.5" /> Envato Audio
+        </span>
+      );
+    }
     if (type === 'story') {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-xs">
@@ -186,9 +200,10 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
   const currentSlideItem = hasCarousel ? info!.carousel_media![safeSlideIndex] : null;
   const displayThumbnail = currentSlideItem?.thumbnail || info?.thumbnail;
   const isPhoto = currentSlideItem ? (currentSlideItem.media_type === 'photo') : (info?.media_type === 'photo');
+  const isAudio = info?.media_type === 'audio' || info?.platform === 'envato';
 
   // Blank placeholder state
-  if (!url.trim() || (!info?.thumbnail && !loading)) {
+  if (!url.trim() || (!info?.thumbnail && !info?.playable_url && !isAudio && !loading)) {
     return (
       <div className="h-full min-h-[160px] rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-main)]/50 p-4 flex flex-col items-center justify-center text-center">
         <div className="w-10 h-10 rounded-2xl bg-[var(--badge-bg)] flex items-center justify-center mb-2 shadow-2xs">
@@ -196,7 +211,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
         </div>
         <p className="text-xs font-bold text-[var(--text-primary)]">Live Media Preview</p>
         <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-[220px]">
-          Paste any Instagram Reel, Photo, Story, Highlight, YouTube Video, or Pinterest Pin
+          Paste any Instagram, YouTube, Pinterest, or Envato Audio / SFX link
         </p>
       </div>
     );
@@ -204,7 +219,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
 
   return (
     <div className="relative h-full flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--bg-main)] overflow-hidden shadow-2xs">
-      {/* Video / Thumbnail Container */}
+      {/* Video / Audio / Thumbnail Container */}
       <div className="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
         {isPlaying ? (
           ytId ? (
@@ -215,6 +230,18 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
               allowFullScreen
               className="w-full h-full border-0"
             />
+          ) : isAudio && info?.playable_url ? (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3 px-4 bg-gradient-to-br from-gray-900 via-emerald-950/60 to-gray-900">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 animate-pulse">
+                <Music className="w-5 h-5" />
+              </div>
+              <audio
+                src={info.playable_url}
+                controls
+                autoPlay
+                className="w-full max-w-[260px] h-9"
+              />
+            </div>
           ) : info?.playable_url ? (
             <video
               src={info.playable_url}
@@ -238,13 +265,18 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
                   }
                 }}
               />
+            ) : isAudio ? (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-emerald-950/50 to-gray-900 text-emerald-400 gap-2">
+                <Music className="w-9 h-9 opacity-60" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/70">320kbps MP3 Audio</span>
+              </div>
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gray-900 text-gray-500">
                 <ImageIcon className="w-8 h-8 opacity-40" />
               </div>
             )}
 
-            {/* Play Button Overlay (Only when video stream is playable and NOT a static photo) */}
+            {/* Play Button Overlay (When video or audio stream is playable and NOT a static photo) */}
             {!isPhoto && (ytId || info?.playable_url) && (
               <button
                 type="button"
@@ -254,7 +286,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
                   background: 'var(--btn-primary-bg)',
                   color: 'var(--btn-primary-text)'
                 }}
-                title="Play Video Preview"
+                title={isAudio ? "Play Audio Preview" : "Play Video Preview"}
               >
                 <Play className="w-5 h-5 ml-0.5 fill-current" />
               </button>

@@ -48,6 +48,21 @@ def test_valid_pinterest_urls():
         assert valid, f"Failed on valid Pinterest URL: {url} - {msg}"
         assert platform == "pinterest"
 
+def test_valid_envato_urls():
+    valid_urls = [
+        "https://elements.envato.com/ai-thinking-MUK72ZA",
+        "https://elements.envato.com/behbubah-UW6XXLW",
+        "https://elements.envato.com/builds-punch-driven-wet-15-9EQB7RU",
+        "https://elements.envato.com/es/ai-thinking-MUK72ZA",
+        "https://audiojungle.net/item/cinematic-whoosh/12345678",
+        "https://audio-previews.elements.envatousercontent.com/files/576361690/preview.mp3",
+        "https://public-assets.content-platform.envatousercontent.com/57495a18-d135/3729ef0b/preview.mp3"
+    ]
+    for url in valid_urls:
+        valid, msg, platform = validate_media_url(url)
+        assert valid, f"Failed on valid Envato URL: {url} - {msg}"
+        assert platform == "envato"
+
 def test_invalid_urls():
     invalid_urls = [
         "https://www.google.com",
@@ -56,7 +71,9 @@ def test_invalid_urls():
         "https://randomsite.com/instagram.com/reel/123",
         "https://www.instagram.com/reel/123/extra",
         "https://www.youtube.com/user/username",
-        "https://www.youtube.com/channel/UC12345"
+        "https://www.youtube.com/channel/UC12345",
+        "https://elements.envato.com/sound-effects",
+        "https://elements.envato.com/audio/royalty-free-music"
     ]
     for url in invalid_urls:
         valid, _, _ = validate_media_url(url)

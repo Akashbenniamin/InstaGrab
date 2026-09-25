@@ -1,4 +1,4 @@
-import { ClipboardPaste, X, Play, Camera, Pin } from 'lucide-react';
+import { ClipboardPaste, X, Play, Camera, Pin, Music } from 'lucide-react';
 import { useRef } from 'react';
 import { validateMediaUrl } from '../services/urlValidator';
 
@@ -60,7 +60,7 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
           onKeyDown={handleKeyDown}
           onPaste={handleNativePaste}
           disabled={disabled}
-          placeholder="Paste Instagram, YouTube, or Pinterest link..."
+          placeholder="Paste Instagram, YouTube, Pinterest, or Envato Audio link..."
           className={`w-full py-3.5 pl-12 pr-28 text-base sm:text-lg rounded-2xl bg-[var(--bg-main)] border ${error ? 'border-red-500' : 'border-[var(--border-color)]'} focus:outline-none focus:border-[var(--accent-color)] transition-all shadow-xs`}
         />
         
@@ -84,6 +84,11 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
                 <>
                   <Play className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)', fill: 'var(--accent-color)' }} />
                   <span>{detection.contentType === 'shorts' ? 'Shorts' : 'YouTube'}</span>
+                </>
+              ) : detection.platform === 'envato' ? (
+                <>
+                  <Music className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)' }} />
+                  <span>Envato Audio</span>
                 </>
               ) : (
                 <>

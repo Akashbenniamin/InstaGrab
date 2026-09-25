@@ -86,6 +86,12 @@ class Downloader:
         if not is_valid:
             return {'error': err_msg}
 
+        if platform == 'envato':
+            try:
+                return self._extract_envato_info(url)
+            except Exception as e:
+                return {'error': str(e)}
+
         if platform == 'youtube':
             yt_match = re.search(r'(?:youtube\.com/watch\?.*?v=|youtu\.be/)([A-Za-z0-9_-]{11})', url)
             if yt_match:
@@ -331,6 +337,20 @@ class Downloader:
 
         with self.active_downloads_lock:
             self.active_downloads[download_id] = {'cancel': False}
+
+        if platform == 'envato':
+            try:
+                self._download_envato_audio(url, download_id, base_path, quality=quality)
+            except Exception as e:
+                err_str = str(e)
+                err_type = 'cancelled' if 'cancelled' in err_str.lower() else 'unknown'
+                self.progress_store.update(download_id, state='error', error=err_str, errorType=err_type)
+            finally:
+                with self.active_downloads_lock:
+                    if download_id in self.active_downloads:
+                        del self.active_downloads[download_id]
+                self.progress_store.cleanup_old()
+            return
 
         seen_files = []
         max_seen_pct = [0.0]
@@ -1412,3 +1432,315 @@ class Downloader:
             filename=last_name,
             files=all_filenames
         )
+
+    def _extract_envato_info(self, url: str) -> dict:
+        import urllib.request
+        import urllib.parse
+        import html as html_lib
+
+        parsed = urllib.parse.urlparse(url)
+        netloc = parsed.netloc.lower()
+
+        # 1. Direct envatousercontent.com audio stream URL
+        if 'envatousercontent.com' in netloc:
+            qs = urllib.parse.parse_qs(parsed.query)
+            custom_title = qs.get('instagrab_title', [None])[0]
+            clean_audio_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+            file_id_match = re.search(r'/files/(\d+)/', parsed.path)
+            fallback_id = file_id_match.group(1) if file_id_match else 'Track'
+            title = custom_title or f"Envato Audio {fallback_id}"
+            return {
+                'title': title,
+                'thumbnail': '',
+                'duration': 0,
+                'uploader': 'Envato Elements',
+                'platform': 'envato',
+                'playable_url': clean_audio_url,
+                'media_type': 'audio',
+                'carousel_media': [],
+                'item_count': 1,
+            }
+
+        # 2. Envato Elements / AudioJungle item page
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            page_html = resp.read().decode('utf-8', errors='ignore')
+
+        audio_url = None
+        title = None
+        uploader = None
+        duration = 0
+        thumbnail = ''
+
+        # Parse JSON-LD structured data (@graph with AudioObject / MusicRecording / Person)
+        ld_blocks = re.findall(
+            r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            page_html,
+            re.DOTALL | re.IGNORECASE
+        )
+        for block in ld_blocks:
+            try:
+                data = json.loads(block.strip())
+                nodes = []
+                if isinstance(data, dict):
+                    if '@graph' in data and isinstance(data['@graph'], list):
+                        nodes.extend(data['@graph'])
+                    else:
+                        nodes.append(data)
+                elif isinstance(data, list):
+                    nodes.extend(data)
+
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    node_type = node.get('@type')
+                    if node_type == 'AudioObject':
+                        if node.get('contentUrl') and not audio_url:
+                            audio_url = node.get('contentUrl')
+                        if node.get('name') and not title:
+                            title = node.get('name')
+                        dur_str = node.get('duration')
+                        if dur_str and not duration:
+                            dur_m = re.match(r'^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$', str(dur_str))
+                            if dur_m:
+                                duration = int(dur_m.group(1) or 0) * 3600 + int(dur_m.group(2) or 0) * 60 + int(float(dur_m.group(3) or 0))
+                    elif node_type == 'MusicRecording':
+                        if node.get('name') and not title:
+                            title = node.get('name')
+                        dur_str = node.get('duration')
+                        if dur_str and not duration:
+                            dur_m = re.match(r'^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$', str(dur_str))
+                            if dur_m:
+                                duration = int(dur_m.group(1) or 0) * 3600 + int(dur_m.group(2) or 0) * 60 + int(float(dur_m.group(3) or 0))
+                        audio_obj = node.get('audio')
+                        if isinstance(audio_obj, dict) and audio_obj.get('contentUrl') and not audio_url:
+                            audio_url = audio_obj.get('contentUrl')
+                    elif node_type == 'Person':
+                        if node.get('name') and not uploader:
+                            uploader = node.get('name')
+            except Exception:
+                continue
+
+        # Fallback regex for audio stream URL in page HTML/hydration state
+        if not audio_url:
+            mp3_match = re.search(
+                r'https://audio-previews\.elements\.envatousercontent\.com/files/\d+/preview\.(?:mp3|m4a)',
+                page_html
+            )
+            if not mp3_match:
+                mp3_match = re.search(
+                    r'https://[^"\'\s<>]*envatousercontent\.com/[^"\'\s<>]+/preview\.(?:mp3|m4a)',
+                    page_html
+                )
+            if not mp3_match:
+                mp3_match = re.search(
+                    r'https://[^"\'\s<>]*envatousercontent\.com/[^"\'\s<>]+\.(?:mp3|m4a)',
+                    page_html
+                )
+            if mp3_match:
+                audio_url = mp3_match.group(0)
+
+        if not audio_url:
+            raise Exception("No audio stream found on this Envato page. Please make sure the URL is a valid Envato Audio or Sound Effect track.")
+
+        # Extract OpenGraph image and fallback title if needed
+        og_img = re.search(r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']', page_html, re.IGNORECASE)
+        if og_img:
+            thumbnail = html_lib.unescape(og_img.group(1))
+
+        if not title:
+            og_title = re.search(r'<meta\s+(?:property|name)=["\']og:title["\']\s+content=["\']([^"\']+)["\']', page_html, re.IGNORECASE)
+            if og_title:
+                title = html_lib.unescape(og_title.group(1))
+                title = re.sub(r'\s+by\s+[^|,-]+(?:on\s+Envato\s+Elements|-\s*Envato\s+Elements).*$', '', title, flags=re.IGNORECASE).strip()
+                title = re.sub(r'\s*[|-]\s*(?:Royalty-Free\s+Music|Sound\s+Effects|Envato\s+Elements|AudioJungle).*$', '', title, flags=re.IGNORECASE).strip()
+
+        if not title:
+            slug_match = re.search(r'/([a-zA-Z0-9-]+)-[A-Za-z0-9]{6,10}/?$', parsed.path)
+            if slug_match:
+                title = slug_match.group(1).replace('-', ' ').title()
+            else:
+                title = "Envato Audio Track"
+        else:
+            title = html_lib.unescape(title).strip()
+
+        return {
+            'title': title,
+            'thumbnail': thumbnail,
+            'duration': duration,
+            'uploader': uploader or 'Envato Elements',
+            'platform': 'envato',
+            'playable_url': audio_url,
+            'media_type': 'audio',
+            'carousel_media': [],
+            'item_count': 1,
+        }
+
+    def _download_envato_audio(self, url: str, download_id: str, base_path: str, quality: str = 'best'):
+        import urllib.request
+        import shutil
+
+        self.progress_store.update(download_id, state='extracting', progress=8.0, speed='Extracting Envato audio info...')
+        info = self._extract_envato_info(url)
+        audio_url = info.get('playable_url')
+        if not audio_url:
+            raise Exception("Could not locate audio stream for this Envato item.")
+
+        raw_title = info.get('title') or 'Envato_Audio'
+        uploader = info.get('uploader') or 'Envato Elements'
+        safe_title = re.sub(r'[<>:"/\\|?*]', '_', raw_title)
+        safe_title = re.sub(r'[\x00-\x1f]', '', safe_title).strip()
+        safe_title = re.sub(r'\s+', ' ', safe_title)[:100] or 'Envato_Audio'
+
+        job_temp_dir = os.path.join(base_path, '.tmp', download_id)
+        os.makedirs(job_temp_dir, exist_ok=True)
+
+        is_m4a = '.m4a' in audio_url.lower()
+        raw_ext = '.m4a' if is_m4a else '.mp3'
+        temp_raw_path = os.path.join(job_temp_dir, f"{safe_title}_raw{raw_ext}")
+        temp_final_path = os.path.join(job_temp_dir, f"{safe_title}.mp3")
+
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Referer': 'https://elements.envato.com/',
+            }
+            req = urllib.request.Request(audio_url, headers=headers)
+            start_t = time.time()
+            downloaded = 0
+
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                total_bytes = int(resp.headers.get('Content-Length') or 0)
+                with open(temp_raw_path, 'wb') as out_f:
+                    while True:
+                        with self.active_downloads_lock:
+                            if self.active_downloads.get(download_id, {}).get('cancel'):
+                                raise Exception("Download cancelled by user")
+
+                        chunk = resp.read(32768)
+                        if not chunk:
+                            break
+                        out_f.write(chunk)
+                        downloaded += len(chunk)
+
+                        elapsed = max(time.time() - start_t, 0.05)
+                        bps = downloaded / elapsed
+                        if bps >= 1048576:
+                            speed_str = f"{bps / 1048576:.1f} MB/s"
+                        else:
+                            speed_str = f"{bps / 1024:.0f} KB/s"
+
+                        if total_bytes > 0:
+                            pct = 15.0 + (downloaded / total_bytes) * 75.0
+                        else:
+                            pct = min(88.0, 15.0 + (downloaded / 500000.0) * 50.0)
+
+                        self.progress_store.update(
+                            download_id,
+                            state='downloading',
+                            progress=round(min(pct, 90.0), 1),
+                            speed=speed_str,
+                            filename=f"{safe_title}.mp3"
+                        )
+
+            if not os.path.exists(temp_raw_path) or os.path.getsize(temp_raw_path) == 0:
+                raise Exception("The downloaded Envato audio file is empty.")
+
+            self.progress_store.update(
+                download_id,
+                state='processing',
+                progress=94.0,
+                speed='Finalizing MP3 audio...',
+                filename=f"{safe_title}.mp3"
+            )
+
+            ffmpeg_dir = get_ffmpeg_dir()
+            ffmpeg_bin = 'ffmpeg'
+            if ffmpeg_dir and os.path.exists(os.path.join(ffmpeg_dir, 'ffmpeg.exe')):
+                ffmpeg_bin = os.path.join(ffmpeg_dir, 'ffmpeg.exe')
+
+            si = None
+            creationflags = 0
+            if sys.platform == 'win32':
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+            # Transcode if input is .m4a or specific lower bitrate requested; otherwise lossless copy with ID3 tags
+            needs_reencode = is_m4a or quality in ('128k', '192k')
+            bitrate_arg = quality if quality in ('128k', '192k', '320k') else '320k'
+            codec_args = ['-c:a', 'libmp3lame', '-b:a', bitrate_arg] if needs_reencode else ['-c:a', 'copy']
+
+            cmd = [
+                ffmpeg_bin, '-y', '-i', temp_raw_path,
+                *codec_args,
+                '-metadata', f'title={raw_title}',
+                '-metadata', f'artist={uploader}',
+                temp_final_path
+            ]
+            ff_ok = False
+            try:
+                res = subprocess.run(cmd, startupinfo=si, creationflags=creationflags, capture_output=True, timeout=60)
+                if res.returncode == 0 and os.path.exists(temp_final_path) and os.path.getsize(temp_final_path) > 0:
+                    ff_ok = True
+            except Exception:
+                ff_ok = False
+
+            source_to_move = temp_final_path if ff_ok else temp_raw_path
+            desired_filename = f"{safe_title}.mp3"
+            target_path = os.path.join(base_path, desired_filename)
+            target_filename = desired_filename
+
+            if os.path.exists(target_path):
+                is_writable = False
+                try:
+                    with open(target_path, 'r+b'):
+                        is_writable = True
+                except (PermissionError, OSError):
+                    is_writable = False
+
+                if not is_writable:
+                    counter = 1
+                    while True:
+                        cand_name = f"{safe_title} ({counter}).mp3"
+                        cand_path = os.path.join(base_path, cand_name)
+                        if not os.path.exists(cand_path):
+                            target_path = cand_path
+                            target_filename = cand_name
+                            break
+                        try:
+                            with open(cand_path, 'r+b'):
+                                target_path = cand_path
+                                target_filename = cand_name
+                                break
+                        except (PermissionError, OSError):
+                            counter += 1
+
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
+            shutil.move(source_to_move, target_path)
+
+            self.progress_store.update(
+                download_id,
+                state='complete',
+                progress=100.0,
+                filepath=target_path,
+                filename=target_filename,
+                files=[target_filename]
+            )
+        finally:
+            try:
+                if os.path.exists(job_temp_dir):
+                    shutil.rmtree(job_temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+

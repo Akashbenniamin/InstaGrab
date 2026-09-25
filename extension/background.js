@@ -124,6 +124,12 @@ function normalizeMediaUrl(rawUrl) {
       const pinMatch = u.pathname.match(/\/pin\/(\d+)/i);
       if (pinMatch) return `https://www.pinterest.com/pin/${pinMatch[1]}/`;
     }
+
+    // 4. Envato Elements & AudioJungle
+    if (u.hostname.includes('envato.com') || u.hostname.includes('audiojungle.net')) {
+      const cleanPath = u.pathname.replace(/\/+$/, '');
+      if (cleanPath) return `${u.protocol}//${u.host}${cleanPath}`;
+    }
   } catch {}
   return rawUrl;
 }
@@ -306,6 +312,10 @@ async function syncCookiesToHelper(domain = 'instagram.com') {
 // Asynchronous start download job with immediate handshake
 async function startDownload(url, formatType, quality, tabId = null, options = {}) {
   url = normalizeMediaUrl(url);
+  const isEnvato = url && (url.includes('envato.com') || url.includes('audiojungle.net') || url.includes('envatousercontent.com'));
+  if (isEnvato) {
+    formatType = 'audio';
+  }
 
   // Fallback to active tab ID if triggered from popup
   if (!tabId && chrome.tabs && chrome.tabs.query) {

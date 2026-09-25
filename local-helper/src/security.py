@@ -102,7 +102,25 @@ def validate_media_url(url: str) -> tuple[bool, str, str]:
             return True, "", "pinterest"
         return False, "Invalid Pinterest Pin URL. Please provide a link to a Pin.", "pinterest"
 
-    return False, "Unsupported platform. Please enter an Instagram, YouTube, or Pinterest URL.", "unknown"
+    # 4. Envato Audio & SFX validation (Envato Elements, AudioJungle, direct audio previews)
+    if 'envatousercontent.com' in netloc:
+        if re.search(r'\.(?:mp3|m4a|wav|aac|ogg)(?:\?.*)?$', url, re.IGNORECASE):
+            return True, "", "envato"
+        return False, "Invalid Envato audio stream URL.", "envato"
+
+    if 'elements.envato.com' in netloc or 'audiojungle.net' in netloc or 'envato.com' in netloc:
+        path_clean = parsed.path.rstrip('/')
+        category_suffixes = (
+            '/sound-effects', '/royalty-free-music', '/audio', '/stock-video',
+            '/video-templates', '/graphic-templates', '/presentation-templates',
+            '/photos', '/fonts', '/add-ons', '/web-templates', '/3d'
+        )
+        if not any(path_clean.lower().endswith(cat) for cat in category_suffixes):
+            if re.search(r'/[a-zA-Z0-9-]+-[A-Za-z0-9]{6,10}$', path_clean) or re.search(r'/item/[^/]+/\d+', path_clean):
+                return True, "", "envato"
+        return False, "Invalid Envato URL. Please provide a link to a specific Envato Audio or SFX track.", "envato"
+
+    return False, "Unsupported platform. Please enter an Instagram, YouTube, Pinterest, or Envato Audio URL.", "unknown"
 
 
 def validate_instagram_url(url: str) -> tuple[bool, str]:

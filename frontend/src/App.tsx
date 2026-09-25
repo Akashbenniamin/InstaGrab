@@ -94,6 +94,9 @@ function App() {
       const val = validateMediaUrl(value.trim());
       if (val.valid) {
         setDetectedMediaType(val.contentType);
+        if (val.platform === 'envato') {
+          setFormatType('audio');
+        }
       } else {
         setDetectedMediaType(undefined);
         setCarouselMedia(null);
@@ -117,17 +120,18 @@ function App() {
       }
     }
 
-    const { valid, error, normalized } = validateMediaUrl(inputUrl);
+    const { valid, error, normalized, platform } = validateMediaUrl(inputUrl);
     if (!valid) {
-      setUrlError(error || 'Please enter a valid Instagram, YouTube, or Pinterest URL');
+      setUrlError(error || 'Please enter a valid Instagram, YouTube, Pinterest, or Envato URL');
       return;
     }
 
     const targetUrl = normalized!;
-    const quality = formatType === 'video' ? videoQuality : audioQuality;
+    const effectiveFormat: FormatType = platform === 'envato' ? 'audio' : formatType;
+    const quality = effectiveFormat === 'video' ? videoQuality : audioQuality;
     const downloadOptions = options || (detectedMediaType === 'carousel' ? { asZip: true } : undefined);
 
-    await startDownload(targetUrl, formatType, quality, downloadOptions);
+    await startDownload(targetUrl, effectiveFormat, quality, downloadOptions);
   };
 
   const handleDownloadItem = (itemIndex: number) => {

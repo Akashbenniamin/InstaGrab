@@ -194,6 +194,33 @@
       }
     }
 
+    // 4. Envato Elements & AudioJungle
+    if (host.includes('envato.com') || host.includes('audiojungle.net')) {
+      const cleanPath = path.replace(/\/+$/, '');
+      // Check if on a single item page
+      if (/[a-zA-Z0-9-]+-[A-Za-z0-9]{6,10}$/.test(cleanPath) && !cleanPath.endsWith('/sound-effects') && !cleanPath.endsWith('/royalty-free-music')) {
+        return { url: window.location.href.split('?')[0], platform: 'envato' };
+      }
+      if (/\/item\/[^/]+\/\d+/.test(cleanPath)) {
+        return { url: window.location.href.split('?')[0], platform: 'envato' };
+      }
+      // On listing/search pages, check if an <audio> element is currently playing or has progress
+      const audios = Array.from(document.querySelectorAll('audio'));
+      const activeAudio = audios.find(a => !a.paused || a.currentTime > 0);
+      if (activeAudio) {
+        const row = activeAudio.parentElement?.parentElement || activeAudio.closest('div');
+        const titleLink = row ? row.querySelector('a[data-testid="title-link"], a[href*="-"]') : null;
+        if (titleLink && titleLink.getAttribute('href')) {
+          return { url: new URL(titleLink.getAttribute('href'), window.location.origin).href, platform: 'envato' };
+        }
+        const srcEl = activeAudio.querySelector('source[type="audio/mpeg"]') || activeAudio.querySelector('source');
+        const srcUrl = activeAudio.currentSrc || (srcEl ? srcEl.src : '');
+        if (srcUrl) {
+          return { url: srcUrl, platform: 'envato' };
+        }
+      }
+    }
+
     return null;
   }
 
@@ -385,7 +412,9 @@
 
     try {
       const prefs = await getUserPreferences();
-      const formatLabel = prefs.format_type === 'audio' ? 'Audio (MP3)' : (prefs.quality === 'best' ? 'Full HD' : prefs.quality);
+      const isEnvato = url && (url.includes('envato.com') || url.includes('audiojungle.net') || url.includes('envatousercontent.com'));
+      const effectiveFormat = isEnvato ? 'audio' : prefs.format_type;
+      const formatLabel = effectiveFormat === 'audio' ? 'Audio (MP3)' : (prefs.quality === 'best' ? 'Full HD' : prefs.quality);
 
       updateToast({
         message: `Starting ${formatLabel} download...`,
@@ -398,7 +427,7 @@
           {
             action: 'download',
             url: url,
-            format_type: prefs.format_type,
+            format_type: effectiveFormat,
             quality: prefs.quality
           },
           (response) => {
@@ -724,6 +753,76 @@
     }
   }
 
+  // ================= ENVATO AUDIO & SFX MODULE =================
+  function scanEnvato() {
+    // 1. Track Rows on Envato Elements Music & Sound Effects listings
+    const titleLinks = document.querySelectorAll('a[data-testid="title-link"]');
+    titleLinks.forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+
+      // Locate the enclosing track row container that holds both the title link and item-actions / waveform
+      let row = link.parentElement;
+      for (let i = 0; i < 6 && row; i++) {
+        if (row.querySelector('[data-testid="item-actions"]') || row.querySelector('[data-testid="audio-waveform"]')) {
+          break;
+        }
+        row = row.parentElement;
+      }
+      if (!row || row.dataset.instagrabInjected) return;
+      row.dataset.instagrabInjected = 'true';
+
+      const itemUrl = new URL(href, window.location.origin).href;
+      const actionsArea = row.querySelector('[data-testid="item-actions"]')?.firstElementChild || row.querySelector('[data-testid="item-actions"]');
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'instagrab-envato-row-btn';
+      btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
+      btn.title = 'Download 320kbps MP3 Audio / SFX with InstaGrab';
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        downloadMedia(itemUrl, btn, 'MP3');
+      });
+
+      if (actionsArea) {
+        actionsArea.insertBefore(btn, actionsArea.firstChild);
+      } else {
+        link.parentElement?.appendChild(btn);
+      }
+    });
+
+    // 2. Single Audio / SFX Item Detail Page on Envato Elements or AudioJungle
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    const isItemPage = (
+      (/[a-zA-Z0-9-]+-[A-Za-z0-9]{6,10}$/.test(cleanPath) && !cleanPath.endsWith('/sound-effects') && !cleanPath.endsWith('/royalty-free-music')) ||
+      /\/item\/[^/]+\/\d+/.test(cleanPath)
+    );
+    const hasAudioOnPage = !!(document.querySelector('audio') || document.querySelector('[data-testid="audio-waveform"]'));
+
+    if (isItemPage && hasAudioOnPage && !document.getElementById('instagrab-envato-item-btn')) {
+      const h1 = document.querySelector('h1');
+      if (h1 && h1.parentElement) {
+        const btn = document.createElement('button');
+        btn.id = 'instagrab-envato-item-btn';
+        btn.type = 'button';
+        btn.className = 'instagrab-envato-item-btn';
+        btn.innerHTML = `${DOWNLOAD_ICON} <span>Download Audio (MP3)</span>`;
+        btn.title = 'Download 320kbps MP3 with InstaGrab';
+
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          downloadMedia(window.location.href.split('?')[0], btn, 'Download Audio (MP3)');
+        });
+
+        h1.parentElement.appendChild(btn);
+      }
+    }
+  }
+
   // ================= DISPATCHER & OBSERVER =================
   function scanAll() {
     const host = window.location.hostname.toLowerCase();
@@ -733,6 +832,8 @@
       scanYouTube();
     } else if (host.includes('instagram.com')) {
       scanInstagram();
+    } else if (host.includes('envato.com') || host.includes('audiojungle.net')) {
+      scanEnvato();
     }
   }
 
@@ -789,5 +890,5 @@
     } catch (_) {}
   }
 
-  console.log('[InstaGrab] Universal media downloader active (Pinterest, YouTube & Instagram)');
+  console.log('[InstaGrab] Universal media downloader active (Pinterest, YouTube, Instagram & Envato Audio)');
 })();

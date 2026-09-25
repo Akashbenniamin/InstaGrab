@@ -6,12 +6,12 @@ export interface ValidationResult {
   normalized?: string;
   shortcode?: string;
   platform: PlatformType;
-  contentType?: 'reel' | 'post' | 'tv' | 'photo' | 'story' | 'highlight' | 'carousel' | 'shorts' | 'video' | 'clip' | 'live';
+  contentType?: 'reel' | 'post' | 'tv' | 'photo' | 'story' | 'highlight' | 'carousel' | 'shorts' | 'video' | 'clip' | 'live' | 'audio' | 'sfx';
 }
 
 export function validateMediaUrl(url: string): ValidationResult {
   if (!url || url.trim() === '') {
-    return { valid: false, error: 'Please enter an Instagram, YouTube, or Pinterest URL', platform: 'unknown' };
+    return { valid: false, error: 'Please enter an Instagram, YouTube, Pinterest, or Envato URL', platform: 'unknown' };
   }
 
   let parsedUrl: URL;
@@ -195,9 +195,49 @@ export function validateMediaUrl(url: string): ValidationResult {
     return { valid: false, error: 'Please provide a link to a Pinterest Pin', platform: 'pinterest' };
   }
 
+  // 4. Envato Audio & SFX (elements.envato.com, audiojungle.net, envatousercontent.com)
+  if (hostname.includes('envatousercontent.com')) {
+    if (/\.(mp3|m4a|wav|aac|ogg)(\?.*)?$/i.test(parsedUrl.href)) {
+      return {
+        valid: true,
+        normalized: parsedUrl.href,
+        platform: 'envato',
+        contentType: 'audio'
+      };
+    }
+    return { valid: false, error: 'Invalid Envato audio stream URL', platform: 'envato' };
+  }
+
+  if (hostname.includes('envato.com') || hostname.includes('audiojungle.net')) {
+    const cleanPath = pathname.replace(/\/+$/, '');
+    const categorySuffixes = [
+      '/sound-effects', '/royalty-free-music', '/audio', '/stock-video',
+      '/video-templates', '/graphic-templates', '/presentation-templates',
+      '/photos', '/fonts', '/add-ons', '/web-templates', '/3d'
+    ];
+    const isCategory = categorySuffixes.some(cat => cleanPath.toLowerCase().endsWith(cat));
+    if (!isCategory) {
+      const itemMatch = cleanPath.match(/\/([a-zA-Z0-9-]+-([A-Za-z0-9]{6,10}))$/) || cleanPath.match(/\/item\/[^/]+\/(\d+)/);
+      if (itemMatch) {
+        return {
+          valid: true,
+          normalized: `${parsedUrl.protocol}//${parsedUrl.host}${cleanPath}`,
+          shortcode: itemMatch[2] || itemMatch[1],
+          platform: 'envato',
+          contentType: 'audio'
+        };
+      }
+    }
+    return {
+      valid: false,
+      error: 'Please provide a link to a specific Envato Elements or AudioJungle audio track / SFX',
+      platform: 'envato'
+    };
+  }
+
   return { 
     valid: false, 
-    error: 'Please enter a URL from Instagram, YouTube, or Pinterest', 
+    error: 'Please enter a URL from Instagram, YouTube, Pinterest, or Envato', 
     platform: 'unknown' 
   };
 }

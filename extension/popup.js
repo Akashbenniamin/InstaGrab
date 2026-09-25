@@ -205,6 +205,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function applyEnvatoAudioModeIfNeeded(uStr) {
+    if (uStr && (uStr.includes('envato.com') || uStr.includes('audiojungle.net') || uStr.includes('envatousercontent.com'))) {
+      currentFormat = 'audio';
+      btnAudio.classList.add('active');
+      btnVideo.classList.remove('active');
+      updateQualityOptions('audio');
+      btnText.textContent = 'Download Audio (MP3)';
+    }
+  }
+
   // Detect active media on the current tab
   async function detectActiveTabMedia() {
     if (!chrome.tabs || !chrome.tabs.query) return;
@@ -224,7 +234,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (res && res.url) {
           urlInput.value = res.url;
-          const platformLabel = res.platform === 'instagram' ? 'Reel / Post' : (res.platform === 'youtube' ? 'Video' : 'Pin');
+          applyEnvatoAudioModeIfNeeded(res.url);
+          const platformLabel = res.platform === 'instagram'
+            ? 'Reel / Post'
+            : (res.platform === 'youtube' ? 'Video' : (res.platform === 'envato' ? 'Envato Audio / SFX' : 'Pin'));
           detectedPill.textContent = `🎯 Active ${platformLabel} detected on page`;
           detectedPill.style.display = 'flex';
         } else {
@@ -245,6 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Don't auto-fill root/generic pages without specific IDs
     if (clean && !isGenericHomepage(clean)) {
       urlInput.value = clean;
+      applyEnvatoAudioModeIfNeeded(clean);
     } else {
       fallbackClipboard();
     }
@@ -254,10 +268,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (urlInput.value) return;
     try {
       const text = await navigator.clipboard.readText();
-      if (text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.'))) {
+      if (text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.') || text.includes('envato.com') || text.includes('audiojungle.net') || text.includes('envatousercontent.com'))) {
         const clean = normalizeMediaUrl(text);
         if (clean && !isGenericHomepage(clean)) {
           urlInput.value = clean;
+          applyEnvatoAudioModeIfNeeded(clean);
           detectedPill.textContent = '📋 Link pasted from clipboard';
           detectedPill.style.display = 'flex';
         }
@@ -278,9 +293,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (u.hostname.includes('youtube.com')) {
         return p === '' || p === '/feed/subscriptions' || p === '/feed/trending';
       }
+      if (u.hostname.includes('envato.com') || u.hostname.includes('audiojungle.net')) {
+        const cats = ['/sound-effects', '/royalty-free-music', '/audio', '/stock-video', '/video-templates', '/graphic-templates', '/photos', '/fonts'];
+        if (p === '' || cats.some(c => p.toLowerCase().endsWith(c))) return true;
+        return !(/[a-zA-Z0-9-]+-[A-Za-z0-9]{6,10}$/.test(p) || /\/item\/[^/]+\/\d+/.test(p));
+      }
     } catch {}
     return false;
   }
+
+  urlInput.addEventListener('input', () => {
+    applyEnvatoAudioModeIfNeeded(urlInput.value);
+  });
 
   detectActiveTabMedia();
 
