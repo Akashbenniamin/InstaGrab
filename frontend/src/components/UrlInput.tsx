@@ -60,7 +60,7 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
           onKeyDown={handleKeyDown}
           onPaste={handleNativePaste}
           disabled={disabled}
-          placeholder="Paste Instagram, YouTube, Pinterest, or Envato Audio link..."
+          placeholder="Paste Instagram, YouTube, Pinterest, Envato, or Epidemic Sound link..."
           className={`w-full py-3.5 pl-12 pr-28 text-base sm:text-lg rounded-2xl bg-[var(--bg-main)] border ${error ? 'border-red-500' : 'border-[var(--border-color)]'} focus:outline-none focus:border-[var(--accent-color)] transition-all shadow-xs`}
         />
         
@@ -89,6 +89,11 @@ export function UrlInput({ value, onChange, onSubmit, disabled, error, onPasteTe
                 <>
                   <Music className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)' }} />
                   <span>Envato Audio</span>
+                </>
+              ) : detection.platform === 'epidemic' ? (
+                <>
+                  <Music className="w-3.5 h-3.5" style={{ color: 'var(--accent-color)' }} />
+                  <span>Epidemic Sound</span>
                 </>
               ) : (
                 <>

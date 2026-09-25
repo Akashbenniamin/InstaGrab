@@ -94,7 +94,7 @@ function App() {
       const val = validateMediaUrl(value.trim());
       if (val.valid) {
         setDetectedMediaType(val.contentType);
-        if (val.platform === 'envato') {
+        if (val.platform === 'envato' || val.platform === 'epidemic') {
           setFormatType('audio');
         }
       } else {
@@ -122,12 +122,12 @@ function App() {
 
     const { valid, error, normalized, platform } = validateMediaUrl(inputUrl);
     if (!valid) {
-      setUrlError(error || 'Please enter a valid Instagram, YouTube, Pinterest, or Envato URL');
+      setUrlError(error || 'Please enter a valid Instagram, YouTube, Pinterest, Envato, or Epidemic Sound URL');
       return;
     }
 
     const targetUrl = normalized!;
-    const effectiveFormat: FormatType = platform === 'envato' ? 'audio' : formatType;
+    const effectiveFormat: FormatType = (platform === 'envato' || platform === 'epidemic') ? 'audio' : formatType;
     const quality = effectiveFormat === 'video' ? videoQuality : audioQuality;
     const downloadOptions = options || (detectedMediaType === 'carousel' ? { asZip: true } : undefined);
 

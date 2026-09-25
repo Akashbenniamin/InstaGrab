@@ -63,6 +63,18 @@ def test_valid_envato_urls():
         assert valid, f"Failed on valid Envato URL: {url} - {msg}"
         assert platform == "envato"
 
+def test_valid_epidemic_urls():
+    valid_urls = [
+        "https://www.epidemicsound.com/sound-effects/tracks/16bb9f7c-282e-45f4-a253-40ee6d605412/",
+        "https://www.epidemicsound.com/music/tracks/f3f4dc47-bf55-4cd1-ac44-d650d157d156/",
+        "https://www.epidemicsound.com/track/some-cool-song/",
+        "https://audiocdn.epidemicsound.com/lqmp3/01KGPFWR0G2E9K5BTRM61DK4B8.mp3"
+    ]
+    for url in valid_urls:
+        valid, msg, platform = validate_media_url(url)
+        assert valid, f"Failed on valid Epidemic Sound URL: {url} - {msg}"
+        assert platform == "epidemic"
+
 def test_invalid_urls():
     invalid_urls = [
         "https://www.google.com",
@@ -73,7 +85,9 @@ def test_invalid_urls():
         "https://www.youtube.com/user/username",
         "https://www.youtube.com/channel/UC12345",
         "https://elements.envato.com/sound-effects",
-        "https://elements.envato.com/audio/royalty-free-music"
+        "https://elements.envato.com/audio/royalty-free-music",
+        "https://www.epidemicsound.com/sound-effects/",
+        "https://www.epidemicsound.com/music/featured/"
     ]
     for url in invalid_urls:
         valid, _, _ = validate_media_url(url)

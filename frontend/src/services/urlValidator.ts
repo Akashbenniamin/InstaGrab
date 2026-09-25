@@ -235,9 +235,41 @@ export function validateMediaUrl(url: string): ValidationResult {
     };
   }
 
+  // 5. Epidemic Sound Audio & SFX (epidemicsound.com, audiocdn.epidemicsound.com)
+  if (hostname.includes('audiocdn.epidemicsound.com')) {
+    if (/\.(mp3|m4a|wav|aac|ogg)(\?.*)?$/i.test(parsedUrl.href)) {
+      return {
+        valid: true,
+        normalized: parsedUrl.href,
+        platform: 'epidemic',
+        contentType: 'audio'
+      };
+    }
+    return { valid: false, error: 'Invalid Epidemic Sound audio stream URL', platform: 'epidemic' };
+  }
+
+  if (hostname.includes('epidemicsound.com')) {
+    const cleanPath = pathname.replace(/\/+$/, '');
+    const trackMatch = cleanPath.match(/\/(?:music|sound-effects)\/tracks\/([a-fA-F0-9-]{10,})/) || cleanPath.match(/\/track\/([A-Za-z0-9_-]+)/);
+    if (trackMatch) {
+      return {
+        valid: true,
+        normalized: `${parsedUrl.protocol}//${parsedUrl.host}${cleanPath}/`,
+        shortcode: trackMatch[1],
+        platform: 'epidemic',
+        contentType: 'audio'
+      };
+    }
+    return {
+      valid: false,
+      error: 'Please provide a link to a specific Epidemic Sound music or sound effect track',
+      platform: 'epidemic'
+    };
+  }
+
   return { 
     valid: false, 
-    error: 'Please enter a URL from Instagram, YouTube, Pinterest, or Envato', 
+    error: 'Please enter a URL from Instagram, YouTube, Pinterest, Envato, or Epidemic Sound', 
     platform: 'unknown' 
   };
 }

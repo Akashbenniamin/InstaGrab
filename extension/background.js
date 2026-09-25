@@ -130,6 +130,12 @@ function normalizeMediaUrl(rawUrl) {
       const cleanPath = u.pathname.replace(/\/+$/, '');
       if (cleanPath) return `${u.protocol}//${u.host}${cleanPath}`;
     }
+
+    // 5. Epidemic Sound (preserve audiocdn query params)
+    if (u.hostname.includes('epidemicsound.com') && !u.hostname.includes('audiocdn.')) {
+      const cleanPath = u.pathname.replace(/\/+$/, '');
+      if (cleanPath) return `${u.protocol}//${u.host}${cleanPath}/`;
+    }
   } catch {}
   return rawUrl;
 }
@@ -312,8 +318,13 @@ async function syncCookiesToHelper(domain = 'instagram.com') {
 // Asynchronous start download job with immediate handshake
 async function startDownload(url, formatType, quality, tabId = null, options = {}) {
   url = normalizeMediaUrl(url);
-  const isEnvato = url && (url.includes('envato.com') || url.includes('audiojungle.net') || url.includes('envatousercontent.com'));
-  if (isEnvato) {
+  const isAudioPlatform = url && (
+    url.includes('envato.com') ||
+    url.includes('audiojungle.net') ||
+    url.includes('envatousercontent.com') ||
+    url.includes('epidemicsound.com')
+  );
+  if (isAudioPlatform) {
     formatType = 'audio';
   }
 

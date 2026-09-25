@@ -74,11 +74,11 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
           media_type: val.contentType === 'shorts' ? 'shorts' : 'video'
         });
       }
-    } else if (val.platform === 'envato') {
+    } else if (val.platform === 'envato' || val.platform === 'epidemic') {
       setYtId(null);
       setInfo({
-        title: 'Envato Audio / SFX Track',
-        platform: 'envato',
+        title: val.platform === 'epidemic' ? 'Epidemic Sound Audio / SFX Track' : 'Envato Audio / SFX Track',
+        platform: val.platform,
         media_type: 'audio'
       });
     } else {
@@ -136,10 +136,11 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
 
   const getMediaBadge = () => {
     const type = info?.media_type || detectedContentType;
-    if (type === 'audio' || type === 'sfx' || info?.platform === 'envato') {
+    if (type === 'audio' || type === 'sfx' || info?.platform === 'envato' || info?.platform === 'epidemic') {
+      const badgeLabel = info?.platform === 'epidemic' ? 'Epidemic Sound' : 'Envato Audio';
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gradient-to-r from-emerald-600 to-lime-600 text-white shadow-xs">
-          <Music className="w-2.5 h-2.5" /> Envato Audio
+          <Music className="w-2.5 h-2.5" /> {badgeLabel}
         </span>
       );
     }
@@ -200,7 +201,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
   const currentSlideItem = hasCarousel ? info!.carousel_media![safeSlideIndex] : null;
   const displayThumbnail = currentSlideItem?.thumbnail || info?.thumbnail;
   const isPhoto = currentSlideItem ? (currentSlideItem.media_type === 'photo') : (info?.media_type === 'photo');
-  const isAudio = info?.media_type === 'audio' || info?.platform === 'envato';
+  const isAudio = info?.media_type === 'audio' || info?.platform === 'envato' || info?.platform === 'epidemic';
 
   // Blank placeholder state
   if (!url.trim() || (!info?.thumbnail && !info?.playable_url && !isAudio && !loading)) {
@@ -211,7 +212,7 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
         </div>
         <p className="text-xs font-bold text-[var(--text-primary)]">Live Media Preview</p>
         <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-[220px]">
-          Paste any Instagram, YouTube, Pinterest, or Envato Audio / SFX link
+          Paste any Instagram, YouTube, Pinterest, Envato, or Epidemic Sound link
         </p>
       </div>
     );

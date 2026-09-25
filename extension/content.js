@@ -221,6 +221,31 @@
       }
     }
 
+    // 5. Epidemic Sound
+    if (host.includes('epidemicsound.com')) {
+      const cleanPath = path.replace(/\/+$/, '');
+      if (/\/(?:music|sound-effects)\/tracks\/[a-fA-F0-9-]{10,}/.test(cleanPath) || /\/track\/[A-Za-z0-9_-]+/.test(cleanPath)) {
+        return { url: window.location.href.split('?')[0], platform: 'epidemic' };
+      }
+      // Check if a track row is currently playing
+      const pauseBtn = document.querySelector('[class*="TrackRow_trackRow"] button[aria-label*="Pause"], [role="row"] button[aria-label*="Pause"]');
+      if (pauseBtn) {
+        const row = pauseBtn.closest('[class*="TrackRow_trackRow"]') || pauseBtn.closest('[role="row"]');
+        const trackLink = row ? row.querySelector('a[href*="/music/tracks/"], a[href*="/sound-effects/tracks/"], a[href*="/track/"]') : null;
+        if (trackLink && trackLink.getAttribute('href')) {
+          return { url: new URL(trackLink.getAttribute('href'), window.location.origin).href, platform: 'epidemic' };
+        }
+      }
+      const audios = Array.from(document.querySelectorAll('audio'));
+      const activeAudio = audios.find(a => (!a.paused || a.currentTime > 0) && (a.currentSrc || a.src));
+      if (activeAudio) {
+        const srcUrl = activeAudio.currentSrc || activeAudio.src;
+        if (srcUrl && srcUrl.includes('epidemicsound.com')) {
+          return { url: srcUrl, platform: 'epidemic' };
+        }
+      }
+    }
+
     return null;
   }
 
@@ -412,8 +437,13 @@
 
     try {
       const prefs = await getUserPreferences();
-      const isEnvato = url && (url.includes('envato.com') || url.includes('audiojungle.net') || url.includes('envatousercontent.com'));
-      const effectiveFormat = isEnvato ? 'audio' : prefs.format_type;
+      const isAudioPlatform = url && (
+        url.includes('envato.com') ||
+        url.includes('audiojungle.net') ||
+        url.includes('envatousercontent.com') ||
+        url.includes('epidemicsound.com')
+      );
+      const effectiveFormat = isAudioPlatform ? 'audio' : prefs.format_type;
       const formatLabel = effectiveFormat === 'audio' ? 'Audio (MP3)' : (prefs.quality === 'best' ? 'Full HD' : prefs.quality);
 
       updateToast({
@@ -754,6 +784,29 @@
   }
 
   // ================= ENVATO AUDIO & SFX MODULE =================
+  // Helper: Resolve the un-watermarked Play Button <audio data-testid="audio-element"> stream URL
+  // (https://public-assets.content-platform.envatousercontent.com/.../preview.mp3)
+  // rather than the "Download preview" link (audio-previews.elements.envatousercontent.com).
+  function resolveEnvatoPlayButtonUrl(scopeEl, fallbackItemUrl, titleText) {
+    try {
+      const audioEl = scopeEl
+        ? (scopeEl.tagName === 'AUDIO' ? scopeEl : scopeEl.querySelector('audio[data-testid="audio-element"], audio'))
+        : document.querySelector('audio[data-testid="audio-element"], audio');
+      if (audioEl) {
+        const sources = Array.from(audioEl.querySelectorAll('source'));
+        const mp3Source = sources.find(s => (s.type === 'audio/mpeg' || (s.src && s.src.includes('.mp3'))) && s.src && s.src.includes('public-assets.content-platform.envatousercontent.com'))
+          || sources.find(s => s.src && s.src.includes('public-assets.content-platform.envatousercontent.com'));
+        const rawSrc = (mp3Source && mp3Source.src) || (audioEl.currentSrc && audioEl.currentSrc.includes('public-assets.content-platform.envatousercontent.com') ? audioEl.currentSrc : '');
+        if (rawSrc) {
+          const u = new URL(rawSrc);
+          if (titleText) u.searchParams.set('instagrab_title', titleText.trim());
+          return u.href;
+        }
+      }
+    } catch (_) {}
+    return fallbackItemUrl;
+  }
+
   function scanEnvato() {
     // 1. Track Rows on Envato Elements Music & Sound Effects listings
     const titleLinks = document.querySelectorAll('a[data-testid="title-link"]');
@@ -773,18 +826,20 @@
       row.dataset.instagrabInjected = 'true';
 
       const itemUrl = new URL(href, window.location.origin).href;
+      const rowTitle = (link.textContent || '').trim();
       const actionsArea = row.querySelector('[data-testid="item-actions"]')?.firstElementChild || row.querySelector('[data-testid="item-actions"]');
 
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'instagrab-envato-row-btn';
       btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
-      btn.title = 'Download 320kbps MP3 Audio / SFX with InstaGrab';
+      btn.title = 'Download Play Button Audio (MP3) with InstaGrab';
 
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        downloadMedia(itemUrl, btn, 'MP3');
+        const targetUrl = resolveEnvatoPlayButtonUrl(row, itemUrl, rowTitle);
+        downloadMedia(targetUrl, btn, 'MP3');
       });
 
       if (actionsArea) {
@@ -810,6 +865,71 @@
         btn.type = 'button';
         btn.className = 'instagrab-envato-item-btn';
         btn.innerHTML = `${DOWNLOAD_ICON} <span>Download Audio (MP3)</span>`;
+        btn.title = 'Download Play Button Audio (MP3) with InstaGrab';
+
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const currentTitle = document.querySelector('h1')?.textContent?.trim() || '';
+          const firstAudio = document.querySelector('audio[data-testid="audio-element"]');
+          const pageUrl = window.location.href.split('?')[0];
+          const targetUrl = resolveEnvatoPlayButtonUrl(firstAudio, pageUrl, currentTitle);
+          downloadMedia(targetUrl, btn, 'Download Audio (MP3)');
+        });
+
+        h1.parentElement.appendChild(btn);
+      }
+    }
+  }
+
+  // ================= EPIDEMIC SOUND MODULE =================
+  function scanEpidemic() {
+    // 1. Track Rows on Epidemic Sound Music & Sound Effects listings
+    const trackLinks = document.querySelectorAll('a[href*="/music/tracks/"], a[href*="/sound-effects/tracks/"], a[href*="/track/"]');
+    trackLinks.forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+
+      const row = link.closest('[class*="TrackRow_trackRow"]') || link.closest('[role="row"]') || link.closest('li');
+      if (!row || row.dataset.instagrabInjected) return;
+      row.dataset.instagrabInjected = 'true';
+
+      const itemUrl = new URL(href, window.location.origin).href;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'instagrab-epidemic-row-btn';
+      btn.innerHTML = `${DOWNLOAD_ICON} <span>MP3</span>`;
+      btn.title = 'Download 320kbps MP3 Audio / SFX with InstaGrab';
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        downloadMedia(itemUrl, btn, 'MP3');
+      });
+
+      const actionBtn = row.querySelector('button[aria-label*="Download"], button[title*="Download"], button[aria-label*="More"], button[aria-label*="Save"], button[aria-label*="Add"]');
+      if (actionBtn && actionBtn.parentElement) {
+        actionBtn.parentElement.insertBefore(btn, actionBtn);
+      } else {
+        row.appendChild(btn);
+      }
+    });
+
+    // 2. Single Track Detail Page on Epidemic Sound
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    const isTrackPage = (
+      /\/(?:music|sound-effects)\/tracks\/[a-fA-F0-9-]{10,}/.test(cleanPath) ||
+      /\/track\/[A-Za-z0-9_-]+/.test(cleanPath)
+    );
+
+    if (isTrackPage && !document.getElementById('instagrab-epidemic-item-btn')) {
+      const h1 = document.querySelector('h1');
+      if (h1 && h1.parentElement) {
+        const btn = document.createElement('button');
+        btn.id = 'instagrab-epidemic-item-btn';
+        btn.type = 'button';
+        btn.className = 'instagrab-epidemic-item-btn';
+        btn.innerHTML = `${DOWNLOAD_ICON} <span>Download Audio (MP3)</span>`;
         btn.title = 'Download 320kbps MP3 with InstaGrab';
 
         btn.addEventListener('click', (e) => {
@@ -834,6 +954,8 @@
       scanInstagram();
     } else if (host.includes('envato.com') || host.includes('audiojungle.net')) {
       scanEnvato();
+    } else if (host.includes('epidemicsound.com')) {
+      scanEpidemic();
     }
   }
 

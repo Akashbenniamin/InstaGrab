@@ -537,8 +537,106 @@ a[href*="/pin/"]:hover .instagrab-pin-btn {
   animation: instagrab-spin 0.8s linear infinite !important;
 }
 
-.instagrab-envato-item-btn.instagrab-success {
+.instagrab-envato-item-btn.instagrab-success,
+.instagrab-epidemic-item-btn.instagrab-success {
   background: #10b981 !important;
+}
+
+/* ================= 3C. EPIDEMIC SOUND AUDIO & SFX ================= */
+.instagrab-epidemic-row-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  height: 30px !important;
+  padding: 0 11px !important;
+  border-radius: 6px !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin-right: 6px !important;
+  box-shadow: none !important;
+  transition: transform 0.15s ease, background-color 0.15s ease !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+}
+
+.instagrab-epidemic-row-btn:hover {
+  background: #1d4ed8 !important;
+  transform: scale(1.04) !important;
+}
+
+.instagrab-epidemic-row-btn:active {
+  transform: scale(0.96) !important;
+}
+
+.instagrab-epidemic-row-btn svg {
+  width: 13px !important;
+  height: 13px !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.5 !important;
+  fill: none !important;
+  flex-shrink: 0 !important;
+}
+
+.instagrab-epidemic-row-btn.instagrab-loading {
+  background: #262626 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-epidemic-row-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
+}
+
+.instagrab-epidemic-row-btn.instagrab-success {
+  background: #10b981 !important;
+}
+
+.instagrab-epidemic-item-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  height: 38px !important;
+  padding: 0 16px !important;
+  margin-top: 10px !important;
+  border-radius: 8px !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  transition: transform 0.15s ease, background-color 0.15s ease !important;
+  user-select: none !important;
+}
+
+.instagrab-epidemic-item-btn:hover {
+  background: #1d4ed8 !important;
+  transform: scale(1.03) !important;
+}
+
+.instagrab-epidemic-item-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.4 !important;
+  fill: none !important;
+}
+
+.instagrab-epidemic-item-btn.instagrab-loading {
+  background: #262626 !important;
+  pointer-events: none !important;
+}
+
+.instagrab-epidemic-item-btn.instagrab-loading svg {
+  animation: instagrab-spin 0.8s linear infinite !important;
 }
 
 /* ================= 4. COMMON ANIMATIONS & TOAST WITH PROGRESS ================= */

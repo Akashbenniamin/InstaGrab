@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function applyEnvatoAudioModeIfNeeded(uStr) {
-    if (uStr && (uStr.includes('envato.com') || uStr.includes('audiojungle.net') || uStr.includes('envatousercontent.com'))) {
+    if (uStr && (uStr.includes('envato.com') || uStr.includes('audiojungle.net') || uStr.includes('envatousercontent.com') || uStr.includes('epidemicsound.com'))) {
       currentFormat = 'audio';
       btnAudio.classList.add('active');
       btnVideo.classList.remove('active');
@@ -237,7 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           applyEnvatoAudioModeIfNeeded(res.url);
           const platformLabel = res.platform === 'instagram'
             ? 'Reel / Post'
-            : (res.platform === 'youtube' ? 'Video' : (res.platform === 'envato' ? 'Envato Audio / SFX' : 'Pin'));
+            : (res.platform === 'youtube' ? 'Video' : (res.platform === 'envato' ? 'Envato Audio / SFX' : (res.platform === 'epidemic' ? 'Epidemic Sound Track' : 'Pin')));
           detectedPill.textContent = `🎯 Active ${platformLabel} detected on page`;
           detectedPill.style.display = 'flex';
         } else {
@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (urlInput.value) return;
     try {
       const text = await navigator.clipboard.readText();
-      if (text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.') || text.includes('envato.com') || text.includes('audiojungle.net') || text.includes('envatousercontent.com'))) {
+      if (text && (text.includes('instagram.com') || text.includes('youtu') || text.includes('pinterest.') || text.includes('envato.com') || text.includes('audiojungle.net') || text.includes('envatousercontent.com') || text.includes('epidemicsound.com'))) {
         const clean = normalizeMediaUrl(text);
         if (clean && !isGenericHomepage(clean)) {
           urlInput.value = clean;
@@ -297,6 +297,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cats = ['/sound-effects', '/royalty-free-music', '/audio', '/stock-video', '/video-templates', '/graphic-templates', '/photos', '/fonts'];
         if (p === '' || cats.some(c => p.toLowerCase().endsWith(c))) return true;
         return !(/[a-zA-Z0-9-]+-[A-Za-z0-9]{6,10}$/.test(p) || /\/item\/[^/]+\/\d+/.test(p));
+      }
+      if (u.hostname.includes('epidemicsound.com') && !u.hostname.includes('audiocdn.')) {
+        return !(/\/(?:music|sound-effects)\/tracks\/[a-fA-F0-9-]{10,}/.test(p) || /\/track\/[A-Za-z0-9_-]+/.test(p));
       }
     } catch {}
     return false;

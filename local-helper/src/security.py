@@ -120,7 +120,19 @@ def validate_media_url(url: str) -> tuple[bool, str, str]:
                 return True, "", "envato"
         return False, "Invalid Envato URL. Please provide a link to a specific Envato Audio or SFX track.", "envato"
 
-    return False, "Unsupported platform. Please enter an Instagram, YouTube, Pinterest, or Envato Audio URL.", "unknown"
+    # 5. Epidemic Sound Audio & SFX validation (epidemicsound.com, audiocdn.epidemicsound.com)
+    if 'audiocdn.epidemicsound.com' in netloc:
+        if re.search(r'\.(?:mp3|m4a|wav|aac|ogg)(?:\?.*)?$', url, re.IGNORECASE):
+            return True, "", "epidemic"
+        return False, "Invalid Epidemic Sound audio stream URL.", "epidemic"
+
+    if 'epidemicsound.com' in netloc:
+        path_clean = parsed.path.rstrip('/')
+        if re.search(r'/(?:music/tracks|sound-effects/tracks|track)/[^/]+$', path_clean):
+            return True, "", "epidemic"
+        return False, "Invalid Epidemic Sound URL. Please provide a link to a specific Epidemic Sound Music or Sound Effect track.", "epidemic"
+
+    return False, "Unsupported platform. Please enter an Instagram, YouTube, Pinterest, Envato, or Epidemic Sound URL.", "unknown"
 
 
 def validate_instagram_url(url: str) -> tuple[bool, str]:
