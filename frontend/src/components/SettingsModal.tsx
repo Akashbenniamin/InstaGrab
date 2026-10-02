@@ -123,18 +123,20 @@ export const SettingsModal: React.FC<Props> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const localSaved = localStorage.getItem('insta_dl_download_path');
-    if (localSaved) {
-      setDownloadPath(localSaved);
-    }
+    try {
+      const localSaved = localStorage.getItem('insta_dl_download_path');
+      if (localSaved) {
+        setDownloadPath(localSaved);
+      }
+    } catch {}
 
     if (status.connected) {
       helperApi.getConfig().then(cfg => {
         if (cfg && cfg.download_path) {
-          if (!localSaved) {
-            setDownloadPath(cfg.download_path);
+          setDownloadPath(cfg.download_path);
+          try {
             localStorage.setItem('insta_dl_download_path', cfg.download_path);
-          }
+          } catch {}
         }
       });
     }
@@ -147,7 +149,9 @@ export const SettingsModal: React.FC<Props> = ({
     if (!trimmed) return;
 
     setIsSaving(true);
-    localStorage.setItem('insta_dl_download_path', trimmed);
+    try {
+      localStorage.setItem('insta_dl_download_path', trimmed);
+    } catch {}
 
     if (status.connected) {
       await helperApi.updateDownloadPath(trimmed);
@@ -159,7 +163,9 @@ export const SettingsModal: React.FC<Props> = ({
   };
 
   const handleResetPath = async () => {
-    localStorage.removeItem('insta_dl_download_path');
+    try {
+      localStorage.removeItem('insta_dl_download_path');
+    } catch {}
     setDownloadPath('');
 
     if (status.connected) {

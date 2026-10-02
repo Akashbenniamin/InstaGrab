@@ -61,6 +61,26 @@
       ]
     }
     </script>
+    <!-- Prevent theme flicker: apply default sunset amber immediately -->
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('insta_dl_theme') || 'sunset';
+          if (t === 'light') {
+            document.documentElement.classList.add('light');
+          } else if (t === 'creators') {
+            document.documentElement.classList.add('creators');
+          } else {
+            document.documentElement.classList.add('dark');
+            if (t !== 'dark' && t !== 'system') {
+              document.documentElement.classList.add(t);
+            }
+          }
+        } catch (e) {
+          document.documentElement.classList.add('dark', 'sunset');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -5,7 +5,7 @@ from pathlib import Path
 
 class Config:
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         
         appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
         self.config_dir = os.path.join(appdata, 'InstaGrab')
@@ -18,7 +18,9 @@ class Config:
             'use_browser_cookies': False,
             'browser_for_cookies': "chrome",
             'max_file_size_mb': 0,
-            'auto_start': False
+            'auto_start': False,
+            'theme': 'sunset',
+            'quick_mode': False
         }
         
     def load(self):
@@ -28,6 +30,8 @@ class Config:
                     with open(self.config_file, 'r', encoding='utf-8') as f:
                         loaded = json.load(f)
                         self.settings.update(loaded)
+                else:
+                    self.save()
             except Exception as e:
                 pass
 

@@ -1,5 +1,15 @@
 import { HelperHealthResponse, HelperStatusResponse, HelperDownloadResponse, MediaInfo, HistoryEntry } from '../types';
 
+export interface HelperConfig {
+  download_path?: string;
+  theme?: string;
+  quick_mode?: boolean;
+  port?: number;
+  use_browser_cookies?: boolean;
+  browser_for_cookies?: string;
+  [key: string]: any;
+}
+
 class HelperApi {
   private baseUrl = 'http://127.0.0.1:18765';
   
@@ -210,12 +220,12 @@ class HelperApi {
     }
   }
 
-  async updateDownloadPath(downloadPath: string): Promise<boolean> {
+  async updateConfig(updates: Record<string, any>): Promise<boolean> {
     try {
       let response = await fetch(`${this.baseUrl}/api/config`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ download_path: downloadPath })
+        body: JSON.stringify(updates)
       });
 
       if (response.status === 401 || response.status === 403) {
@@ -225,19 +235,23 @@ class HelperApi {
           response = await fetch(`${this.baseUrl}/api/config`, {
             method: 'POST',
             headers: this.getHeaders(),
-            body: JSON.stringify({ download_path: downloadPath })
+            body: JSON.stringify(updates)
           });
         } catch {}
       }
 
       return response.ok;
     } catch (e) {
-      console.error('Failed to update download path:', e);
+      console.error('Failed to update config:', e);
       return false;
     }
   }
 
-  async getConfig(): Promise<{ download_path?: string } | null> {
+  async updateDownloadPath(downloadPath: string): Promise<boolean> {
+    return this.updateConfig({ download_path: downloadPath });
+  }
+
+  async getConfig(): Promise<HelperConfig | null> {
     try {
       let response = await fetch(`${this.baseUrl}/api/config`, {
         headers: this.getHeaders()
@@ -256,7 +270,6 @@ class HelperApi {
       if (!response.ok) return null;
       return await response.json();
     } catch (e) {
-      console.error('Failed to get config:', e);
       return null;
     }
   }

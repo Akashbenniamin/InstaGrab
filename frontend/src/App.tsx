@@ -76,10 +76,35 @@ function App() {
     };
   }, [refreshHistory, downloads]);
 
+  // Synchronize persistent settings from local helper (survives Brave storage wipes)
+  useEffect(() => {
+    if (!status.connected) return;
+    helperApi.getConfig().then(cfg => {
+      if (!cfg) return;
+      if (typeof cfg.quick_mode === 'boolean') {
+        const localQuick = localStorage.getItem('insta_dl_quick_mode');
+        if (localQuick === null) {
+          setQuickMode(cfg.quick_mode);
+          try {
+            localStorage.setItem('insta_dl_quick_mode', String(cfg.quick_mode));
+          } catch {}
+        }
+      }
+      if (cfg.download_path) {
+        try {
+          localStorage.setItem('insta_dl_download_path', cfg.download_path);
+        } catch {}
+      }
+    }).catch(() => {});
+  }, [status.connected]);
+
   const toggleQuickMode = () => {
     setQuickMode(prev => {
       const next = !prev;
-      localStorage.setItem('insta_dl_quick_mode', String(next));
+      try {
+        localStorage.setItem('insta_dl_quick_mode', String(next));
+      } catch {}
+      helperApi.updateConfig({ quick_mode: next }).catch(() => {});
       return next;
     });
   };

@@ -18,15 +18,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   const progEta = document.getElementById('prog-eta');
 
   let currentFormat = 'video';
-  let currentTheme = 'creators';
+  let currentTheme = 'sunset';
 
   // Apply Theme Function
   function setTheme(th) {
+    if (!th) return;
     currentTheme = th;
     document.body.className = th;
     if (chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({ pref_theme: th });
     }
+    try {
+      fetch('http://127.0.0.1:18765/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'InstaGrab' },
+        body: JSON.stringify({ theme: th })
+      }).catch(() => {});
+    } catch {}
   }
 
   // Bind theme selector dots
@@ -66,13 +74,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load saved preferences
   if (chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(['pref_format', 'pref_quality', 'pref_theme'], (res) => {
-      if (res.pref_theme) {
+      if (res && res.pref_theme) {
         setTheme(res.pref_theme);
       } else {
-        setTheme('creators');
+        setTheme('sunset');
       }
 
-      if (res.pref_format) {
+      if (res && res.pref_format) {
         currentFormat = res.pref_format;
         if (currentFormat === 'audio') {
           btnAudio.classList.add('active');
@@ -82,10 +90,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           btnAudio.classList.remove('active');
         }
       }
-      updateQualityOptions(currentFormat, res.pref_quality || 'best');
+      updateQualityOptions(currentFormat, (res && res.pref_quality) || 'best');
     });
   } else {
-    setTheme('creators');
+    setTheme('sunset');
     updateQualityOptions('video');
   }
 
@@ -123,6 +131,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (res && res.ok) {
         dot.classList.add('connected');
         statusText.textContent = 'Active (18765)';
+        // Sync theme from helper if local extension theme is unset
+        fetch('http://127.0.0.1:18765/api/config', {
+          headers: { 'X-Requested-With': 'InstaGrab' }
+        }).then(r => r.json()).then(cfg => {
+          if (cfg && cfg.theme && (!chrome.storage || !chrome.storage.local)) {
+            setTheme(cfg.theme);
+          } else if (cfg && cfg.theme && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(['pref_theme'], (s) => {
+              if (!s || !s.pref_theme) {
+                setTheme(cfg.theme);
+              }
+            });
+          }
+        }).catch(() => {});
       } else {
         dot.classList.remove('connected');
         statusText.textContent = 'Offline';

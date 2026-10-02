@@ -262,7 +262,7 @@ def create_app(config, downloader, token_manager):
             
         if request.method == 'POST':
             data = request.json or {}
-            for k in ['download_path', 'use_browser_cookies', 'browser_for_cookies']:
+            for k in ['download_path', 'use_browser_cookies', 'browser_for_cookies', 'theme', 'quick_mode', 'audio_format', 'video_quality']:
                 if k in data:
                     config.set(k, data[k])
             return jsonify(config.settings)
