@@ -128,14 +128,13 @@ def create_app(config, downloader, token_manager):
     def health():
         if request.method == 'OPTIONS':
             return '', 204
-        cookie_path = config.get_cookie_file_path()
         return jsonify({
             'status': 'ok',
             'version': '1.1.0',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0,
-            'hasCookies': bool(cookie_path and os.path.exists(cookie_path))
+            'hasCookies': False
         })
 
     @app.route('/api/pair/auto', methods=['GET', 'POST', 'OPTIONS'])
@@ -168,21 +167,6 @@ def create_app(config, downloader, token_manager):
             return jsonify({'token': result, 'status': 'paired'})
         return jsonify({'error': result}), 403
 
-    @app.route('/api/cookies/sync', methods=['POST', 'OPTIONS'])
-    def sync_cookies():
-        if request.method == 'OPTIONS':
-            return '', 204
-        data = request.json or {}
-        cookies_list = data.get('cookies') or []
-        if not cookies_list:
-            return jsonify({'error': 'No cookies provided'}), 400
-        
-        platform = data.get('platform', 'instagram')
-        saved = config.save_netscape_cookies(cookies_list, platform=platform)
-        if saved:
-            return jsonify({'success': True, 'count': len(cookies_list)})
-        return jsonify({'error': 'Failed to save cookies'}), 500
-
     @app.route('/api/download', methods=['POST', 'OPTIONS'])
     def download():
         if request.method == 'OPTIONS':
@@ -198,13 +182,6 @@ def create_app(config, downloader, token_manager):
         is_valid, err_msg, platform = validate_media_url(url)
         if not is_valid:
             return jsonify({'error': err_msg}), 400
-
-        # Auto-sync cookies if provided with download request (strictly Instagram only)
-        if data.get('cookies') and platform == 'instagram':
-            try:
-                config.save_netscape_cookies(data.get('cookies'), platform='instagram')
-            except Exception:
-                pass
 
         # Canonical normalization for Instagram URLs
         if platform == 'instagram':
@@ -262,7 +239,7 @@ def create_app(config, downloader, token_manager):
             
         if request.method == 'POST':
             data = request.json or {}
-            for k in ['download_path', 'use_browser_cookies', 'browser_for_cookies', 'theme', 'quick_mode', 'audio_format', 'video_quality']:
+            for k in ['download_path', 'theme', 'quick_mode', 'audio_format', 'video_quality']:
                 if k in data:
                     config.set(k, data[k])
             return jsonify(config.settings)

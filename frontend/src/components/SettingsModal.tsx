@@ -425,19 +425,19 @@ export const SettingsModal: React.FC<Props> = ({
                 </a>
               </div>
 
-              {/* Automated 18+ Session Sync Feature Highlight */}
+              {/* 100% Zero-Cookie Privacy Highlight */}
               <div className="p-3.5 rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] space-y-1.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-[#10b981]" />
-                    <span className="text-xs font-bold text-[var(--text-primary)]">Automated 18+ Reel &amp; Private Session Sync</span>
+                    <span className="text-xs font-bold text-[var(--text-primary)]">100% Account Safe &amp; Zero-Cookie</span>
                   </div>
                   <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-[var(--badge-bg)] text-[var(--badge-text)] uppercase">
-                    Seamless
+                    Safe
                   </span>
                 </div>
                 <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                  The extension automatically syncs your logged-in Instagram session to the Desktop Engine in the background. Age-restricted and sensitive 18+ reels download seamlessly with zero manual export needed.
+                  InstaGrab operates with zero browser cookie access. Your personal accounts and login credentials remain completely untouched and secure.
                 </p>
               </div>
 
@@ -494,7 +494,7 @@ export const SettingsModal: React.FC<Props> = ({
                   <div>Status: <span className="font-bold" style={{ color: 'var(--accent-color)' }}>{status.connected ? 'Active (Port 18765)' : 'Offline'}</span></div>
                   <div>Version: <span className="font-bold text-[var(--text-primary)]">{status.version || 'v1.1.0'}</span></div>
                   <div>Platforms: <span className="font-bold text-[var(--text-primary)]">Instagram, YouTube, Pinterest</span></div>
-                  <div>18+ Session Sync: <span className="font-bold" style={{ color: status.hasCookies ? '#10b981' : 'var(--text-secondary)' }}>{status.hasCookies ? 'Active (Synced)' : 'Auto-Sync Active'}</span></div>
+                  <div>Account Privacy: <span className="font-bold text-[#10b981]">100% Zero-Cookie</span></div>
                 </div>
               </div>
 

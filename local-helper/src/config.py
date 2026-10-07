@@ -15,25 +15,44 @@ class Config:
             'download_path': os.path.join(os.path.expanduser('~'), 'Downloads', 'InstaGrab'),
             'port': 18765,
             'allowed_origins': ["http://localhost:5173", "http://127.0.0.1:5173"],
-            'use_browser_cookies': False,
-            'browser_for_cookies': "chrome",
             'max_file_size_mb': 0,
             'auto_start': False,
             'theme': 'sunset',
             'quick_mode': False
         }
         
+    def cleanup_cookie_files(self):
+        """Purge all stored cookie files completely from disk."""
+        with self.lock:
+            try:
+                if os.path.isdir(self.config_dir):
+                    for fname in os.listdir(self.config_dir):
+                        if fname == 'cookies.txt' or fname.endswith('_cookies.txt'):
+                            p = os.path.join(self.config_dir, fname)
+                            try:
+                                os.remove(p)
+                                print(f"[InstaGrab Config] Removed cookie file: {p}")
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
     def load(self):
         with self.lock:
             try:
                 if os.path.exists(self.config_file):
                     with open(self.config_file, 'r', encoding='utf-8') as f:
                         loaded = json.load(f)
+                        # Remove legacy cookie settings if present
+                        loaded.pop('use_browser_cookies', None)
+                        loaded.pop('browser_for_cookies', None)
                         self.settings.update(loaded)
+                    self.save()
                 else:
                     self.save()
             except Exception as e:
                 pass
+        self.cleanup_cookie_files()
 
     def save(self):
         with self.lock:
@@ -63,84 +82,4 @@ class Config:
             return path
 
     def get_cookie_file_path(self, platform='instagram'):
-        with self.lock:
-            # Only provide cookies for instagram authentication (18+, stories, highlights).
-            # Passing browser cookies to YouTube triggers "The page needs to be reloaded" bot detection.
-            if platform != 'instagram':
-                return None
-
-            dl_path = self.settings.get('download_path')
-            
-            # Check dedicated instagram_cookies.txt
-            ig_cookies = os.path.join(self.config_dir, 'instagram_cookies.txt')
-            if os.path.exists(ig_cookies) and os.path.getsize(ig_cookies) > 10:
-                return ig_cookies
-
-            # Check appdata config dir cookies.txt (only if it contains instagram cookies)
-            appdata_cookies = os.path.join(self.config_dir, 'cookies.txt')
-            if os.path.exists(appdata_cookies) and os.path.getsize(appdata_cookies) > 10:
-                try:
-                    with open(appdata_cookies, 'r', encoding='utf-8', errors='ignore') as f:
-                        if 'instagram.com' in f.read():
-                            return appdata_cookies
-                except Exception:
-                    pass
-
-            # Check if user dropped a custom cookies.txt in their download path
-            if dl_path:
-                custom_path = os.path.join(dl_path, 'cookies.txt')
-                if os.path.exists(custom_path) and os.path.getsize(custom_path) > 10:
-                    return custom_path
-            
-            return None
-
-    def save_netscape_cookies(self, cookies_list, platform='instagram'):
-        if not cookies_list:
-            return False
-        import time
-        lines = [
-            "# Netscape HTTP Cookie File",
-            f"# Auto-synced by InstaGrab Extension for {platform} authentication",
-            "# https://curl.haxx.se/rfc/cookie_spec.html",
-            ""
-        ]
-        count = 0
-        for c in cookies_list:
-            domain = c.get('domain', '')
-            if not domain:
-                continue
-            flag = 'TRUE' if domain.startswith('.') else 'FALSE'
-            path = c.get('path', '/')
-            secure = 'TRUE' if c.get('secure', False) else 'FALSE'
-            exp = c.get('expirationDate')
-            if exp is None or exp <= 0:
-                exp = int(time.time()) + 86400 * 90  # 90 days default
-            else:
-                exp = int(exp)
-            name = c.get('name', '')
-            val = c.get('value', '')
-            if name:
-                lines.append(f"{domain}\t{flag}\t{path}\t{secure}\t{exp}\t{name}\t{val}")
-                count += 1
-
-        if count == 0:
-            return False
-
-        with self.lock:
-            try:
-                os.makedirs(self.config_dir, exist_ok=True)
-                # Save to dedicated platform file
-                plat_file = 'instagram_cookies.txt' if platform == 'instagram' else f"{platform}_cookies.txt"
-                cookie_path = os.path.join(self.config_dir, plat_file)
-                with open(cookie_path, 'w', encoding='utf-8') as f:
-                    f.write('\n'.join(lines) + '\n')
-                
-                # Also save to cookies.txt if instagram
-                if platform == 'instagram':
-                    legacy_path = os.path.join(self.config_dir, 'cookies.txt')
-                    with open(legacy_path, 'w', encoding='utf-8') as f:
-                        f.write('\n'.join(lines) + '\n')
-                return True
-            except Exception as e:
-                print(f"[InstaGrab Config] Error saving cookies: {e}")
-                return False
+        return None

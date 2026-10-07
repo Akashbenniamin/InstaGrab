@@ -141,14 +141,6 @@ class Downloader:
         if node_path:
             ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
 
-        if platform == 'instagram':
-            cookie_file = self.config.get_cookie_file_path('instagram')
-            if cookie_file:
-                ydl_opts['cookiefile'] = cookie_file
-            elif self.config.get('use_browser_cookies'):
-                browser = self.config.get('browser_for_cookies')
-                if browser:
-                    ydl_opts['cookiesfrombrowser'] = (browser,)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -602,19 +594,6 @@ class Downloader:
             ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
 
         is_valid, _, platform = validate_media_url(url)
-        if platform == 'instagram':
-            cookie_file = self.config.get_cookie_file_path('instagram')
-            if cookie_file and os.path.exists(cookie_file):
-                safe_cookie_file = os.path.join(job_temp_dir, 'cookies.txt')
-                try:
-                    shutil.copyfile(cookie_file, safe_cookie_file)
-                    ydl_opts['cookiefile'] = safe_cookie_file
-                except Exception:
-                    ydl_opts['cookiefile'] = cookie_file
-            elif self.config.get('use_browser_cookies'):
-                browser = self.config.get('browser_for_cookies')
-                if browser:
-                    ydl_opts['cookiesfrombrowser'] = (browser,)
 
         try:
             self.progress_store.update(download_id, state='extracting', progress=5.0, speed='Fetching stream info...')
@@ -842,19 +821,7 @@ class Downloader:
             error_type = 'unknown'
             if is_ig_auth_error or 'login' in err_str.lower() or 'private' in err_str.lower() or '401' in err_str or 'sign in' in err_str.lower():
                 error_type = 'private_content'
-                has_session = False
-                cookie_file = self.config.get_cookie_file_path('instagram')
-                if cookie_file and os.path.exists(cookie_file):
-                    try:
-                        with open(cookie_file, 'r', encoding='utf-8', errors='ignore') as f:
-                            if 'sessionid' in f.read():
-                                has_session = True
-                    except Exception:
-                        pass
-                if has_session:
-                    err_str = "This Instagram post is private or restricted. Your saved session does not have access (or has expired). Please verify access in your browser."
-                else:
-                    err_str = "This Instagram post is private, age-restricted, or requires login. Please log in to Instagram in your browser and use the InstaGrab Extension to download it."
+                err_str = "This Instagram post is private, restricted, or requires login to view."
             elif 'unsupported' in err_str.lower() or 'unable to extract' in err_str.lower():
                 error_type = 'instagram_changed'
             elif 'urlopen' in err_str.lower() or 'connection' in err_str.lower() or 'timed out' in err_str.lower():
@@ -1099,7 +1066,6 @@ class Downloader:
 
     def _fetch_instagram_post_info(self, url: str) -> dict:
         import urllib.request
-        import http.cookiejar
         import json
         import re
 
@@ -1120,14 +1086,6 @@ class Downloader:
         node_path = shutil.which('node')
         if node_path:
             ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
-
-        cookie_file = self.config.get_cookie_file_path('instagram')
-        if cookie_file and os.path.exists(cookie_file):
-            ydl_opts['cookiefile'] = cookie_file
-        elif self.config.get('use_browser_cookies'):
-            browser = self.config.get('browser_for_cookies')
-            if browser:
-                ydl_opts['cookiesfrombrowser'] = (browser,)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1243,16 +1201,7 @@ class Downloader:
             'Referer': 'https://www.instagram.com/',
         }
 
-        cookie_file = self.config.get_cookie_file_path('instagram')
-        if cookie_file and os.path.exists(cookie_file):
-            try:
-                cj = http.cookiejar.MozillaCookieJar(cookie_file)
-                cj.load(ignore_discard=True, ignore_expires=True)
-                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-            except Exception:
-                opener = urllib.request.build_opener()
-        else:
-            opener = urllib.request.build_opener()
+        opener = urllib.request.build_opener()
 
         item = None
         if pk > 0:
@@ -1394,17 +1343,7 @@ class Downloader:
             'Referer': 'https://www.instagram.com/'
         }
 
-        cookie_file = self.config.get_cookie_file_path('instagram')
-        if cookie_file and os.path.exists(cookie_file):
-            try:
-                import http.cookiejar
-                cj = http.cookiejar.MozillaCookieJar(cookie_file)
-                cj.load(ignore_discard=True, ignore_expires=True)
-                opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-            except Exception:
-                opener = urllib.request.build_opener()
-        else:
-            opener = urllib.request.build_opener()
+        opener = urllib.request.build_opener()
 
         saved_files = []
         ffmpeg_dir = get_ffmpeg_dir()

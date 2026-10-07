@@ -1775,14 +1775,6 @@
     scanAll();
   }
 
-  // Seamlessly sync Instagram cookies when visiting Instagram or the InstaGrab Web App
-  if (chrome.runtime && chrome.runtime.sendMessage) {
-    try {
-      chrome.runtime.sendMessage({ action: 'syncCookies', domain: 'instagram.com' }, () => {
-        if (chrome.runtime.lastError) {} // Ignore if receiver unavailable
-      });
-    } catch (_) {}
-  }
 
   console.log('[InstaGrab] Universal media downloader active (Pinterest, YouTube, Instagram, Spotify, Magnific, Flaticon, Envato & Epidemic Sound)');
 })();

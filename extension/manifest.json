@@ -10,9 +10,7 @@
     "tabs",
     "clipboardRead",
     "clipboardWrite",
-    "contextMenus",
-    "cookies",
-    "alarms"
+    "contextMenus"
   ],
   "host_permissions": [
     "<all_urls>",

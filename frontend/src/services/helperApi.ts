@@ -5,8 +5,6 @@ export interface HelperConfig {
   theme?: string;
   quick_mode?: boolean;
   port?: number;
-  use_browser_cookies?: boolean;
-  browser_for_cookies?: string;
   [key: string]: any;
 }
 
