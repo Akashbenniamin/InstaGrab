@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "InstaGrab - 1-Click Media Downloader",
   "version": "1.4.0",
-  "description": "Download Instagram, YouTube, Spotify, Pinterest, Magnific, Flaticon, Envato, and Epidemic Sound directly to your browser via InstaGrab.",
+  "description": "Download or copy Instagram, YouTube, Spotify, Pinterest, Magnific, Flaticon, Canva, Envato, and Epidemic Sound directly to your browser/clipboard.",
   "permissions": [
     "storage",
     "downloads",
@@ -43,6 +43,8 @@
   "content_scripts": [
     {
       "matches": [
+        "*://*.canva.com/*",
+        "*://canva.com/*",
         "*://*.pinterest.com/*",
         "*://pinterest.com/*",
         "*://*.pinterest.ca/*",

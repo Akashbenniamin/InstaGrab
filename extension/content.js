@@ -1709,6 +1709,331 @@
     }
   }
 
+  // ================= CANVA BACKGROUND REMOVER MODULE =================
+  // Enables 1-click "Copy Image" as transparent PNG to clipboard on Canva's background remover tool,
+  // without needing to download files to disk or battle non-copyable overlays.
+
+  function extractCanvaCutout(container) {
+    if (!container) return null;
+
+    // 1. Check for canvas elements (often used for background removal renderers)
+    const canvases = Array.from(container.querySelectorAll('canvas')).filter(c => c.width > 50 && c.height > 50);
+    if (canvases.length > 0) {
+      canvases.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+      return { type: 'canvas', element: canvases[0] };
+    }
+
+    // 2. Check for img elements
+    const imgs = Array.from(container.querySelectorAll('img')).filter(img => {
+      const src = img.currentSrc || img.src || '';
+      if (!src) return false;
+      if (src.includes('logo') || src.includes('avatar') || src.includes('icon') || src.includes('brand')) return false;
+      const w = img.naturalWidth || img.clientWidth || img.width || 0;
+      const h = img.naturalHeight || img.clientHeight || img.height || 0;
+      return (w > 100 && h > 100) || src.startsWith('blob:') || src.startsWith('data:');
+    });
+
+    if (imgs.length > 0) {
+      imgs.sort((a, b) => {
+        const aBlob = (a.src || '').startsWith('blob:') || (a.src || '').startsWith('data:');
+        const bBlob = (b.src || '').startsWith('blob:') || (b.src || '').startsWith('data:');
+        if (aBlob && !bBlob) return -1;
+        if (!aBlob && bBlob) return 1;
+        const aArea = (a.naturalWidth || a.width || 0) * (a.naturalHeight || a.height || 0);
+        const bArea = (b.naturalWidth || b.width || 0) * (b.naturalHeight || b.height || 0);
+        return bArea - aArea;
+      });
+      return { type: 'img', element: imgs[0], url: imgs[0].currentSrc || imgs[0].src };
+    }
+
+    // 3. Check for background-image
+    const bgEls = Array.from(container.querySelectorAll('div, section, span')).filter(el => {
+      const bg = window.getComputedStyle(el).backgroundImage;
+      return bg && bg.startsWith('url(') && !bg.includes('logo') && !bg.includes('icon');
+    });
+    if (bgEls.length > 0) {
+      const match = window.getComputedStyle(bgEls[0]).backgroundImage.match(/url\(['"]?(.*?)['"]?\)/);
+      if (match && match[1]) {
+        return { type: 'bg', element: bgEls[0], url: match[1] };
+      }
+    }
+
+    // 4. Check for <a> or download link
+    const dlLinks = Array.from(container.querySelectorAll('a[download], a[href^="blob:"], a[href^="data:"]'));
+    if (dlLinks.length > 0 && dlLinks[0].href) {
+      return { type: 'link', element: dlLinks[0], url: dlLinks[0].href };
+    }
+
+    return null;
+  }
+
+  async function copyCanvaCutoutToClipboard(cutoutInfo, button, dlBtn) {
+    if (button && button.classList.contains('instagrab-loading')) return;
+    const origHtml = button ? button.innerHTML : '';
+    if (button) {
+      button.classList.add('instagrab-loading');
+      button.innerHTML = `${SPINNER_ICON} <span>Copying...</span>`;
+    }
+
+    const restoreBtn = (isSuccess) => {
+      if (!button) return;
+      button.classList.remove('instagrab-loading');
+      if (isSuccess) {
+        button.classList.add('instagrab-success');
+        button.innerHTML = `${CHECK_ICON} <span>Copied!</span>`;
+        setTimeout(() => {
+          button.classList.remove('instagrab-success');
+          button.innerHTML = origHtml;
+        }, 2500);
+      } else {
+        button.innerHTML = origHtml;
+      }
+    };
+
+    try {
+      updateToast({
+        message: 'Converting cutout to crisp PNG...',
+        progress: 35,
+        state: 'processing'
+      });
+
+      let pngBlob = null;
+
+      // 1. Try canvas.toBlob()
+      if (cutoutInfo && cutoutInfo.type === 'canvas' && cutoutInfo.element) {
+        try {
+          pngBlob = await new Promise((resolve) => {
+            cutoutInfo.element.toBlob(resolve, 'image/png');
+          });
+        } catch (cErr) {
+          console.warn('[InstaGrab] Canvas toBlob error:', cErr);
+        }
+      }
+
+      // 2. Try drawing img element to offscreen canvas
+      if (!pngBlob && cutoutInfo && cutoutInfo.type === 'img' && cutoutInfo.element) {
+        const img = cutoutInfo.element;
+        try {
+          const off = document.createElement('canvas');
+          const w = img.naturalWidth || img.width || 800;
+          const h = img.naturalHeight || img.height || 800;
+          off.width = w;
+          off.height = h;
+          const ctx = off.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          pngBlob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
+        } catch (drawErr) {
+          console.warn('[InstaGrab] Offscreen canvas drawImage error:', drawErr);
+        }
+      }
+
+      // 3. Try fetching URL (blob:, data:, or https:)
+      let targetUrl = (cutoutInfo && cutoutInfo.url) || (cutoutInfo && cutoutInfo.element && (cutoutInfo.element.currentSrc || cutoutInfo.element.src));
+      if (!pngBlob && targetUrl) {
+        if (targetUrl.startsWith('blob:') || targetUrl.startsWith('data:')) {
+          const res = await fetch(targetUrl);
+          const rawBlob = await res.blob();
+          if (rawBlob.type === 'image/png') {
+            pngBlob = rawBlob;
+          } else {
+            const bmp = await createImageBitmap(rawBlob);
+            const off = document.createElement('canvas');
+            off.width = bmp.width;
+            off.height = bmp.height;
+            const ctx = off.getContext('2d');
+            ctx.drawImage(bmp, 0, 0);
+            pngBlob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
+          }
+        } else {
+          // Use background worker to fetch & convert to PNG DataURL
+          const dataUrl = await new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({ action: 'fetchPngDataUrl', url: targetUrl }, (res) => {
+              if (chrome.runtime.lastError || !res || !res.success || !res.dataUrl) {
+                reject(new Error((res && res.error) || 'Failed to fetch image'));
+              } else {
+                resolve(res.dataUrl);
+              }
+            });
+          });
+          const res = await fetch(dataUrl);
+          pngBlob = await res.blob();
+        }
+      }
+
+      // 4. Fallback: If dlBtn exists, listen for Canva's programmatic anchor click
+      if (!pngBlob && dlBtn) {
+        let capturedUrl = null;
+        const origClick = HTMLAnchorElement.prototype.click;
+        HTMLAnchorElement.prototype.click = function () {
+          if (this.href && (this.href.startsWith('blob:') || this.href.startsWith('data:') || this.href.includes('.png'))) {
+            capturedUrl = this.href;
+          }
+        };
+        try {
+          dlBtn.click();
+        } catch (e) {}
+        HTMLAnchorElement.prototype.click = origClick;
+
+        if (capturedUrl) {
+          const res = await fetch(capturedUrl);
+          pngBlob = await res.blob();
+        }
+      }
+
+      if (!pngBlob) {
+        throw new Error('Unable to capture cutout image data.');
+      }
+
+      // Ensure blob is genuine image/png for ClipboardItem
+      if (pngBlob.type !== 'image/png') {
+        const bmp = await createImageBitmap(pngBlob);
+        const off = document.createElement('canvas');
+        off.width = bmp.width;
+        off.height = bmp.height;
+        const ctx = off.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        pngBlob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
+      }
+
+      updateToast({
+        message: 'Writing transparent PNG to clipboard...',
+        progress: 85,
+        state: 'processing'
+      });
+
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': pngBlob })
+      ]);
+
+      restoreBtn(true);
+      updateToast({
+        message: '✓ Transparent PNG copied to clipboard!',
+        progress: 100,
+        state: 'complete'
+      });
+    } catch (err) {
+      console.warn('[InstaGrab] Canva copy error:', err);
+      restoreBtn(false);
+      updateToast({
+        message: '❌ Failed to copy PNG: ' + (err.message || 'Permission denied'),
+        isError: true
+      });
+    }
+  }
+
+  function scanCanva() {
+    // 1. Search for Canva's "Download" buttons on the background remover tool / modal
+    const allButtons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
+    const dlButtons = allButtons.filter(b => {
+      if (b.classList.contains('instagrab-ignore') || b.classList.contains('instagrab-canva-copy-btn')) return false;
+      const txt = b.textContent.trim().toLowerCase();
+      return txt === 'download' || (txt.startsWith('download') && !txt.includes('app'));
+    });
+
+    dlButtons.forEach(dlBtn => {
+      const parentBar = dlBtn.parentElement;
+      if (!parentBar) return;
+
+      if (parentBar.querySelector('.instagrab-canva-copy-btn')) return;
+
+      const modal = dlBtn.closest('[role="dialog"]') ||
+                    dlBtn.closest('div[class*="modal" i]') ||
+                    dlBtn.closest('div[class*="dialog" i]') ||
+                    dlBtn.closest('section') ||
+                    document.body;
+
+      let cutout = extractCanvaCutout(modal);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'instagrab-canva-copy-btn';
+      copyBtn.innerHTML = `${COPY_ICON} <span>Copy Image</span>`;
+      copyBtn.title = 'Copy transparent PNG directly to clipboard without downloading';
+      copyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const freshCutout = extractCanvaCutout(modal) || cutout;
+        copyCanvaCutoutToClipboard(freshCutout, copyBtn, dlBtn);
+      });
+
+      if (dlBtn.nextSibling) {
+        parentBar.insertBefore(copyBtn, dlBtn.nextSibling);
+      } else {
+        parentBar.appendChild(copyBtn);
+      }
+
+      if (cutout && cutout.element) {
+        const previewEl = cutout.element;
+        previewEl.style.pointerEvents = 'auto';
+        previewEl.style.userSelect = 'auto';
+
+        const previewCard = previewEl.closest('div[class*="preview" i], div[class*="card" i], div[class*="image" i]') || previewEl.parentElement;
+        if (previewCard && !previewCard.querySelector('.instagrab-canva-floating-copy')) {
+          const floatBtn = document.createElement('button');
+          floatBtn.type = 'button';
+          floatBtn.className = 'instagrab-canva-floating-copy';
+          floatBtn.innerHTML = `${COPY_ICON} <span>Copy PNG</span>`;
+          floatBtn.title = 'Copy cutout directly to clipboard';
+          floatBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const freshCutout = extractCanvaCutout(modal) || cutout;
+            copyCanvaCutoutToClipboard(freshCutout, floatBtn, dlBtn);
+          });
+
+          const overlays = previewCard.querySelectorAll('div');
+          overlays.forEach(ov => {
+            if (ov !== previewCard && !ov.contains(floatBtn)) {
+              const cs = window.getComputedStyle(ov);
+              if (cs.position === 'absolute' && cs.pointerEvents !== 'none' && !ov.innerText.trim()) {
+                ov.style.pointerEvents = 'none';
+              }
+            }
+          });
+
+          previewCard.addEventListener('contextmenu', (e) => {
+            e.stopPropagation();
+          }, true);
+
+          const computedPos = window.getComputedStyle(previewCard).position;
+          if (computedPos === 'static') {
+            previewCard.style.position = 'relative';
+          }
+          previewCard.appendChild(floatBtn);
+        }
+      }
+    });
+
+    // 2. Also check opened "Remove background" dialogs
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"]'));
+    dialogs.forEach(dialog => {
+      const text = dialog.textContent.toLowerCase();
+      if ((text.includes('remove background') || text.includes('background remover')) && !dialog.querySelector('.instagrab-canva-floating-copy')) {
+        const cutout = extractCanvaCutout(dialog);
+        if (cutout && cutout.element) {
+          const previewCard = cutout.element.closest('div[class*="preview" i], div[class*="card" i]') || cutout.element.parentElement;
+          if (previewCard && !previewCard.querySelector('.instagrab-canva-floating-copy')) {
+            const floatBtn = document.createElement('button');
+            floatBtn.type = 'button';
+            floatBtn.className = 'instagrab-canva-floating-copy';
+            floatBtn.innerHTML = `${COPY_ICON} <span>Copy PNG</span>`;
+            floatBtn.title = 'Copy cutout directly to clipboard';
+            floatBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              copyCanvaCutoutToClipboard(cutout, floatBtn, null);
+            });
+            const computedPos = window.getComputedStyle(previewCard).position;
+            if (computedPos === 'static') {
+              previewCard.style.position = 'relative';
+            }
+            previewCard.appendChild(floatBtn);
+          }
+        }
+      }
+    });
+  }
+
   // ================= DISPATCHER & OBSERVER =================
   function scanAll() {
     const host = window.location.hostname.toLowerCase();
@@ -1728,6 +2053,8 @@
       scanFlaticon();
     } else if (host.includes('spotify.com')) {
       scanSpotify();
+    } else if (host.includes('canva.com')) {
+      scanCanva();
     }
   }
 
@@ -1776,5 +2103,5 @@
   }
 
 
-  console.log('[InstaGrab] Universal media downloader active (Pinterest, YouTube, Instagram, Spotify, Magnific, Flaticon, Envato & Epidemic Sound)');
+  console.log('[InstaGrab] Universal media downloader & copy active (Pinterest, YouTube, Instagram, Spotify, Magnific, Flaticon, Canva, Envato & Epidemic Sound)');
 })();
