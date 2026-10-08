@@ -54,3 +54,11 @@ def test_ensure_h264_compatible_edge_cases():
     assert downloader._ensure_h264_compatible("missing_file.mp4") == "missing_file.mp4"
     assert downloader._ensure_h264_compatible("audio.mp3") == "audio.mp3"
 
+def test_ffmpeg_detection():
+    from src.downloader import get_ffmpeg_dir
+    ffmpeg_dir = get_ffmpeg_dir()
+    assert ffmpeg_dir is not None
+    assert os.path.exists(os.path.join(ffmpeg_dir, 'ffmpeg.exe'))
+    # Verify directory was injected into PATH
+    assert ffmpeg_dir in os.environ['PATH']
+

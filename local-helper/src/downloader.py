@@ -6,19 +6,152 @@ import os
 import sys
 import time
 import re
+import shutil
+import logging
+import urllib.request
+import zipfile
 from .security import validate_media_url
 
+_ffmpeg_lock = threading.Lock()
+
+def _inject_path(directory: str):
+    """Safely prepends directory to PATH so yt-dlp and subprocesses always find ffmpeg and ffprobe."""
+    if not directory or not os.path.isdir(directory):
+        return
+    current_path = os.environ.get("PATH", "")
+    dirs = current_path.split(os.pathsep)
+    if directory not in dirs:
+        os.environ["PATH"] = directory + os.pathsep + current_path
+
 def get_ffmpeg_dir():
-    """Resolves FFmpeg directory whether running as script or frozen bundle."""
+    """Resolves FFmpeg directory whether running as script or frozen bundle, or in standard install locations."""
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    ffmpeg_dir = os.path.join(base_dir, "ffmpeg")
-    if os.path.exists(os.path.join(ffmpeg_dir, "ffmpeg.exe")) or os.path.exists(os.path.join(ffmpeg_dir, "ffmpeg")):
-        return ffmpeg_dir
+    candidate_dirs = [
+        os.path.join(base_dir, "ffmpeg"),
+        base_dir,
+        os.path.join(base_dir, "_internal", "ffmpeg"),
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'InstaGrabHelper', 'ffmpeg'),
+        os.path.join(os.environ.get('APPDATA', ''), 'InstaGrab', 'bin', 'ffmpeg'),
+        os.path.join(os.environ.get('APPDATA', ''), 'InstaGrab', 'bin'),
+        os.path.join(os.environ.get('APPDATA', ''), 'InstaGrab', 'ffmpeg'),
+    ]
+
+    # Check Winget / Chocolatey common locations on Windows
+    if sys.platform == 'win32':
+        candidate_dirs.append(r"C:\ProgramData\chocolatey\bin")
+        candidate_dirs.append(r"C:\ffmpeg\bin")
+        local_appdata = os.environ.get('LOCALAPPDATA', '')
+        if local_appdata:
+            winget_pkg_dir = os.path.join(local_appdata, 'Microsoft', 'WinGet', 'Packages')
+            if os.path.isdir(winget_pkg_dir):
+                try:
+                    for entry in os.listdir(winget_pkg_dir):
+                        if 'ffmpeg' in entry.lower():
+                            sub = os.path.join(winget_pkg_dir, entry)
+                            for root, dirs, files in os.walk(sub):
+                                if 'ffmpeg.exe' in files:
+                                    candidate_dirs.append(root)
+                                    break
+                except Exception:
+                    pass
+
+    exe_name = "ffmpeg.exe" if sys.platform == 'win32' else "ffmpeg"
+    for c_dir in candidate_dirs:
+        if c_dir and os.path.exists(os.path.join(c_dir, exe_name)):
+            _inject_path(c_dir)
+            return c_dir
+
+    which_ffmpeg = shutil.which('ffmpeg')
+    if which_ffmpeg:
+        c_dir = os.path.dirname(os.path.abspath(which_ffmpeg))
+        _inject_path(c_dir)
+        return c_dir
+
     return None
+
+def ensure_ffmpeg(progress_callback=None):
+    """
+    Guarantees FFmpeg and ffprobe are available.
+    If not already found locally, downloads static essentials into %APPDATA%/InstaGrab/bin/ffmpeg,
+    extracts them, and prepends to PATH.
+    """
+    existing = get_ffmpeg_dir()
+    if existing:
+        return existing
+
+    with _ffmpeg_lock:
+        existing = get_ffmpeg_dir()
+        if existing:
+            return existing
+
+        target_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'InstaGrab', 'bin', 'ffmpeg')
+        os.makedirs(target_dir, exist_ok=True)
+
+        if progress_callback:
+            try:
+                progress_callback("Setting up media converter dependency (FFmpeg)...")
+            except Exception:
+                pass
+
+        download_urls = [
+            "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+            "https://github.com/GyanD/codexffmpeg/releases/download/7.1/ffmpeg-7.1-essentials_build.zip"
+        ]
+
+        temp_zip = os.path.join(target_dir, "ffmpeg_download.zip")
+        temp_extract = os.path.join(target_dir, "extract_temp")
+
+        for url in download_urls:
+            try:
+                logging.info(f"Downloading FFmpeg dependency from {url}...")
+                req = urllib.request.Request(
+                    url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) InstaGrabHelper/1.1'}
+                )
+                with urllib.request.urlopen(req, timeout=60) as response, open(temp_zip, 'wb') as out_file:
+                    shutil.copyfileobj(response, out_file)
+
+                with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                    zip_ref.extractall(temp_extract)
+
+                found_ffmpeg = False
+                for root, dirs, files in os.walk(temp_extract):
+                    for file in files:
+                        if file.lower() in ('ffmpeg.exe', 'ffprobe.exe'):
+                            src_file = os.path.join(root, file)
+                            dst_file = os.path.join(target_dir, file)
+                            shutil.copy2(src_file, dst_file)
+                            if file.lower() == 'ffmpeg.exe':
+                                found_ffmpeg = True
+
+                try:
+                    if os.path.exists(temp_zip):
+                        os.remove(temp_zip)
+                    if os.path.exists(temp_extract):
+                        shutil.rmtree(temp_extract, ignore_errors=True)
+                except Exception:
+                    pass
+
+                if found_ffmpeg:
+                    logging.info(f"FFmpeg installed successfully to {target_dir}")
+                    _inject_path(target_dir)
+                    return target_dir
+
+            except Exception as e:
+                logging.warning(f"Failed downloading FFmpeg from {url}: {e}")
+                try:
+                    if os.path.exists(temp_zip):
+                        os.remove(temp_zip)
+                    if os.path.exists(temp_extract):
+                        shutil.rmtree(temp_extract, ignore_errors=True)
+                except Exception:
+                    pass
+
+        return None
 
 def normalize_instagram_url(url: str) -> str:
     """Normalizes Instagram URLs, decoding /s/ shortlinks to highlights and cleaning params."""
@@ -132,7 +265,7 @@ class Downloader:
             'noplaylist': (platform == 'youtube'),
             'socket_timeout': 20,
         }
-        ffmpeg_dir = get_ffmpeg_dir()
+        ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
@@ -516,7 +649,7 @@ class Downloader:
             ydl_opts['http_chunk_size'] = 10485760
 
         # Set ffmpeg directory if found
-        ffmpeg_dir = get_ffmpeg_dir()
+        ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
@@ -1079,7 +1212,7 @@ class Downloader:
             'extract_flat': False,
             'noplaylist': False,
         }
-        ffmpeg_dir = get_ffmpeg_dir()
+        ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
         import shutil
@@ -1854,7 +1987,7 @@ class Downloader:
                 filename=f"{safe_title}.mp3"
             )
 
-            ffmpeg_dir = get_ffmpeg_dir()
+            ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
             ffmpeg_bin = 'ffmpeg'
             if ffmpeg_dir and os.path.exists(os.path.join(ffmpeg_dir, 'ffmpeg.exe')):
                 ffmpeg_bin = os.path.join(ffmpeg_dir, 'ffmpeg.exe')
@@ -2188,7 +2321,7 @@ class Downloader:
                     im = im.convert('RGBA')
                 im.save(temp_file, format='PNG', optimize=True)
             elif is_video:
-                ffmpeg_dir = get_ffmpeg_dir()
+                ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
                 temp_file = self._ensure_h264_compatible(temp_file, ffmpeg_dir, platform=platform, download_id=download_id)
 
             desired_filename = f"{safe_title}{ext}"
@@ -2377,7 +2510,7 @@ class Downloader:
         job_temp_dir = os.path.join(base_path, '.tmp', download_id)
         os.makedirs(job_temp_dir, exist_ok=True)
 
-        ffmpeg_dir = get_ffmpeg_dir()
+        ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
         audio_bitrate = '192' if quality == '192k' else ('128' if quality == '128k' else '320')
         node_path = shutil.which('node')
 

@@ -30,9 +30,34 @@ jobs:
         working-directory: local-helper
         run: python generate_icon.py
 
+      - name: Download FFmpeg essentials
+        working-directory: local-helper
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force -Path ffmpeg
+          Write-Host "Downloading FFmpeg release essentials..."
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
+          Write-Host "Extracting FFmpeg..."
+          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_extracted"
+          Get-ChildItem -Path "ffmpeg_extracted" -Filter "ffmpeg.exe" -Recurse | Copy-Item -Destination "ffmpeg/ffmpeg.exe"
+          Get-ChildItem -Path "ffmpeg_extracted" -Filter "ffprobe.exe" -Recurse | Copy-Item -Destination "ffmpeg/ffprobe.exe"
+          Remove-Item -Path "ffmpeg.zip", "ffmpeg_extracted" -Recurse -Force
+          Write-Host "FFmpeg prepared:"
+          Get-ChildItem -Path ffmpeg
+
       - name: Build with PyInstaller
         working-directory: local-helper
         run: python build.py
+
+      - name: Verify bundled binaries
+        run: |
+          if (-not (Test-Path "local-helper/dist/InstaGrab Helper/ffmpeg/ffmpeg.exe")) {
+            throw "FFmpeg binary missing from dist directory!"
+          }
+          if (-not (Test-Path "local-helper/dist/InstaGrab Helper/ffmpeg/ffprobe.exe")) {
+            throw "FFprobe binary missing from dist directory!"
+          }
+          Write-Host "Verified all required media dependencies bundled successfully in dist/InstaGrab Helper/ffmpeg/"
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress

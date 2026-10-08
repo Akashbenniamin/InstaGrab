@@ -103,6 +103,18 @@ def main():
     logger = logging.getLogger('InstaGrab')
     logger.info("InstaGrab Helper starting...")
 
+    # Ensure FFmpeg dependency is discovered and injected into PATH early
+    try:
+        from src.downloader import get_ffmpeg_dir, ensure_ffmpeg
+        ffmpeg_dir = get_ffmpeg_dir()
+        if ffmpeg_dir:
+            logger.info(f"FFmpeg detected and ready at: {ffmpeg_dir}")
+        else:
+            logger.info("FFmpeg not detected locally. Initiating background fetch...")
+            threading.Thread(target=ensure_ffmpeg, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Error checking FFmpeg dependency on startup: {e}")
+
     # Register custom protocol handler for 1-click web launch
     register_protocol_handler()
 
