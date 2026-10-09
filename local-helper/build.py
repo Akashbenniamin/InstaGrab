@@ -1,6 +1,13 @@
-import PyInstaller.__main__
 import os
 import sys
+
+# Prevent OpenBLAS memory allocation failure in child processes
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+
+import PyInstaller.__main__
 import shutil
 import urllib.request
 import zipfile
@@ -138,6 +145,9 @@ def build():
         '--hidden-import=PIL',
         '--hidden-import=win32com',
         '--hidden-import=win32com.client',
+        '--exclude-module=numpy',
+        '--exclude-module=pytest',
+        '--exclude-module=unittest',
         '--distpath=dist',
         '--workpath=build',
     ])

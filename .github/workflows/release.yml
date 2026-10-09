@@ -64,7 +64,15 @@ jobs:
 
       - name: Compile Inno Setup Installer
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" local-helper/installer/setup.iss
+          if (Get-Command ISCC.exe -ErrorAction SilentlyContinue) {
+            ISCC.exe local-helper/installer/setup.iss
+          } elseif (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" local-helper/installer/setup.iss
+          } elseif (Test-Path "C:\Program Files\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files\Inno Setup 6\ISCC.exe" local-helper/installer/setup.iss
+          } else {
+            throw "ISCC compiler not found"
+          }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
