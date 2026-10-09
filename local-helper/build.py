@@ -145,6 +145,7 @@ def build():
         '--hidden-import=PIL',
         '--hidden-import=win32com',
         '--hidden-import=win32com.client',
+        '--hidden-import=certifi',
         '--exclude-module=numpy',
         '--exclude-module=pytest',
         '--exclude-module=unittest',

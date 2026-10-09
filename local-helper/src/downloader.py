@@ -261,6 +261,7 @@ class Downloader:
             'skip_download': True,
             'quiet': True,
             'no_warnings': True,
+            'nocheckcertificate': True,
             'extract_flat': False,
             'noplaylist': (platform == 'youtube'),
             'socket_timeout': 20,
@@ -642,6 +643,7 @@ class Downloader:
             'postprocessor_hooks': [my_pp_hook],
             'quiet': True,
             'no_warnings': True,
+            'nocheckcertificate': True,
         }
 
         # Apply chunking exclusively to YouTube to bypass DASH rate-limiting without breaking HLS range requests on Pinterest/Instagram
@@ -674,7 +676,44 @@ class Downloader:
             # Video (MP4) - Prioritize progressive H.264 MP4, falling back to AVC+AAC muxing for editing software compatibility
             ydl_opts['merge_output_format'] = 'mp4'
             ydl_opts['format_sort'] = ['vcodec:h264', 'acodec:m4a', 'res', 'fps']
-            if quality == '1080p':
+            if platform == 'instagram':
+                # Instagram progressive MP4 CDN URLs frequently 500 / 429 / timeout on unauthenticated requests.
+                # Prioritize DASH video + DASH audio streams, which are unthrottled and highest resolution.
+                if quality == '1080p':
+                    ydl_opts['format'] = (
+                        'bestvideo[height<=1080]+bestaudio/'
+                        'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
+                        'bestvideo[height<=1080]/best[height<=1080]/'
+                        'bestvideo+bestaudio/best'
+                    )
+                elif quality == '720p':
+                    ydl_opts['format'] = (
+                        'bestvideo[height<=720]+bestaudio/'
+                        'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+                        'bestvideo[height<=720]/best[height<=720]/'
+                        'bestvideo+bestaudio/best'
+                    )
+                elif quality == '480p':
+                    ydl_opts['format'] = (
+                        'bestvideo[height<=480]+bestaudio/'
+                        'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+                        'bestvideo[height<=480]/best[height<=480]/'
+                        'bestvideo+bestaudio/best'
+                    )
+                elif quality == '360p':
+                    ydl_opts['format'] = (
+                        'bestvideo[height<=360]+bestaudio/'
+                        'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
+                        'bestvideo[height<=360]/best[height<=360]/'
+                        'bestvideo+bestaudio/best'
+                    )
+                else:
+                    ydl_opts['format'] = (
+                        'bestvideo+bestaudio/'
+                        'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
+                        'bestvideo+bestaudio/best'
+                    )
+            elif quality == '1080p':
                 ydl_opts['format'] = (
                     'best[height<=1080][ext=mp4][protocol^=http]/'
                     'bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
@@ -928,6 +967,44 @@ class Downloader:
                     or 'requires authentication' in err_lower
                 ):
                     is_ig_auth_error = True
+
+            # Check if Instagram stream encountered rate-limiting, 500, or read timeout on progressive stream
+            if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and not is_ig_auth_error:
+                if any(x in err_str.lower() for x in ['500', '429', 'timed out', 'read operation timed out', 'unable to download video data', 'certificate verify failed']):
+                    try:
+                        self.progress_store.update(download_id, state='extracting', filename='Retrying Instagram stream...')
+                        retry_opts = dict(ydl_opts)
+                        retry_opts['format'] = 'bestvideo+bestaudio/best'
+                        retry_opts['nocheckcertificate'] = True
+                        with yt_dlp.YoutubeDL(retry_opts) as retry_ydl:
+                            info = retry_ydl.extract_info(url, download=True)
+                            filepath = retry_ydl.prepare_filename(info)
+                            if format_type == 'audio':
+                                base_no_ext, _ = os.path.splitext(filepath)
+                                mp3_filepath = base_no_ext + '.mp3'
+                                if os.path.exists(mp3_filepath):
+                                    filepath = mp3_filepath
+                            if not os.path.exists(filepath):
+                                candidates = [os.path.join(job_temp_dir, f) for f in os.listdir(job_temp_dir) if not f.endswith('.part') and not f.endswith('.ytdl') and not f.startswith('.')]
+                                if candidates:
+                                    filepath = max(candidates, key=os.path.getsize)
+                            if os.path.exists(filepath):
+                                if format_type != 'audio' and filepath.lower().endswith('.mp4'):
+                                    filepath = self._ensure_h264_compatible(filepath, ffmpeg_dir, platform=platform, download_id=download_id)
+                                desired_filename = os.path.basename(filepath)
+                                target_path = os.path.join(base_path, desired_filename)
+                                target_filename = desired_filename
+                                if os.path.exists(target_path):
+                                    try:
+                                        os.remove(target_path)
+                                    except Exception:
+                                        pass
+                                import shutil
+                                shutil.move(filepath, target_path)
+                                self.progress_store.update(download_id, state='complete', progress=100.0, filepath=target_path, filename=target_filename)
+                                return
+                    except Exception as ig_retry_err:
+                        logging.warning(f"Instagram retry with DASH stream failed: {ig_retry_err}")
 
             # Check if this is an Instagram photo, carousel, or post where yt-dlp finds no video formats or fails
             # Skip fallback if yt-dlp already flagged that the post requires login or sent an empty media response
@@ -1209,6 +1286,7 @@ class Downloader:
             'skip_download': True,
             'quiet': True,
             'no_warnings': True,
+            'nocheckcertificate': True,
             'extract_flat': False,
             'noplaylist': False,
         }
@@ -1334,7 +1412,13 @@ class Downloader:
             'Referer': 'https://www.instagram.com/',
         }
 
-        opener = urllib.request.build_opener()
+        import ssl
+        try:
+            import certifi
+            ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ssl_ctx = ssl._create_unverified_context()
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl_ctx))
 
         item = None
         if pk > 0:
@@ -1352,27 +1436,33 @@ class Downloader:
         # Fallback to direct page scraping if API fails or returns no items
         if not item:
             page_req = urllib.request.Request(f'https://www.instagram.com/p/{shortcode}/', headers=headers)
-            with opener.open(page_req, timeout=12) as p_resp:
-                html = p_resp.read().decode('utf-8', errors='ignore')
-                og_img = re.search(r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html)
-                og_title = re.search(r'<meta\s+(?:property|name)=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html)
-                if not og_img:
-                    if 'httpErrorPage' in html or 'PolarisErrorRoot' in html or 'login' in html or 'checkpoint' in html:
-                        raise Exception("This Instagram post is private, age-restricted, or requires login to view.")
-                    raise Exception("Could not find media content in this Instagram post")
-                img_url = og_img.group(1).replace('&amp;', '&')
-                title = og_title.group(1) if og_title else f"instagram_photo_{shortcode}"
-                clean_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or f"instagram_{shortcode}"
-                return {
-                    'title': title,
-                    'thumbnail': img_url,
-                    'duration': 0,
-                    'uploader': 'Instagram',
-                    'platform': 'instagram',
-                    'playable_url': None,
-                    'media_type': 'photo',
-                    'targets': [(img_url, False, f"{clean_title}.jpg")]
-                }
+            try:
+                with opener.open(page_req, timeout=12) as p_resp:
+                    html = p_resp.read().decode('utf-8', errors='ignore')
+                    og_img = re.search(r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']', html)
+                    og_title = re.search(r'<meta\s+(?:property|name)=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html)
+                    if not og_img:
+                        if 'httpErrorPage' in html or 'PolarisErrorRoot' in html or 'login' in html or 'checkpoint' in html:
+                            raise Exception("This Instagram post is private, age-restricted, or requires login to view.")
+                        raise Exception("Could not find media content in this Instagram post")
+                    img_url = og_img.group(1).replace('&amp;', '&')
+                    title = og_title.group(1) if og_title else f"instagram_photo_{shortcode}"
+                    clean_title = re.sub(r'[<>:"/\\|?*]', '_', title)[:60].strip() or f"instagram_{shortcode}"
+                    return {
+                        'title': title,
+                        'thumbnail': img_url,
+                        'duration': 0,
+                        'uploader': 'Instagram',
+                        'platform': 'instagram',
+                        'playable_url': None,
+                        'media_type': 'photo',
+                        'targets': [(img_url, False, f"{clean_title}.jpg")]
+                    }
+            except Exception as page_err:
+                err_text = str(page_err).lower()
+                if '500' in err_text or '429' in err_text or 'too many requests' in err_text:
+                    raise Exception("Instagram is temporarily throttling unauthenticated requests. Please try again shortly.")
+                raise
 
         caption = item.get('caption', {}).get('text', '') if item.get('caption') else ''
         title = caption.split('\n')[0].strip() or f"instagram_{shortcode}"
@@ -1476,7 +1566,13 @@ class Downloader:
             'Referer': 'https://www.instagram.com/'
         }
 
-        opener = urllib.request.build_opener()
+        import ssl
+        try:
+            import certifi
+            ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ssl_ctx = ssl._create_unverified_context()
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl_ctx))
 
         saved_files = []
         ffmpeg_dir = get_ffmpeg_dir()
@@ -2571,6 +2667,7 @@ class Downloader:
                     'outtmpl': track_out_base + '.%(ext)s',
                     'quiet': True,
                     'no_warnings': True,
+                    'nocheckcertificate': True,
                     'noplaylist': True,
                     'socket_timeout': 20,
                     'retries': 5,
