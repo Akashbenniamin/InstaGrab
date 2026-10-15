@@ -298,6 +298,9 @@ async function startDownload(url, formatType, quality, tabId = null, options = {
     if (options.item_index !== undefined) {
       downloadPayload.item_index = options.item_index;
     }
+    if (options.direct_media_url) {
+      downloadPayload.direct_media_url = options.direct_media_url;
+    }
 
     let resp = await fetch(`${HELPER_BASE}/api/download`, {
       method: 'POST',

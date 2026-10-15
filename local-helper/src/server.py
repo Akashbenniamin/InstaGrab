@@ -130,7 +130,7 @@ def create_app(config, downloader, token_manager):
             return '', 204
         return jsonify({
             'status': 'ok',
-            'version': '1.5.1',
+            'version': '1.5.2',
             'downloadPath': config.get_download_path(),
             'ytdlpVersion': 'unknown',
             'paired': len(token_manager.tokens) > 0,
@@ -190,6 +190,7 @@ def create_app(config, downloader, token_manager):
             
         format_type = data.get('format_type', 'video')
         quality = data.get('quality', 'best')
+        direct_media_url = data.get('direct_media_url')
         item_index = data.get('item_index')
         if item_index is not None:
             try:
@@ -198,7 +199,7 @@ def create_app(config, downloader, token_manager):
                 item_index = None
         as_zip = bool(data.get('as_zip', True))
         download_id = 'dl_' + generate_token(12)
-        downloader.start_download(url, download_id, format_type=format_type, quality=quality, item_index=item_index, as_zip=as_zip)
+        downloader.start_download(url, download_id, format_type=format_type, quality=quality, item_index=item_index, as_zip=as_zip, direct_media_url=direct_media_url)
         return jsonify({'downloadId': download_id}), 202
 
     @app.route('/api/download/<download_id>/status', methods=['GET', 'OPTIONS'])

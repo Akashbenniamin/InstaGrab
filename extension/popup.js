@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentFormat = 'video';
   let currentTheme = 'sunset';
+  let detectedDirectMediaUrl = null;
 
   // Apply Theme Function
   function setTheme(th) {
@@ -251,6 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (res && res.url) {
           urlInput.value = res.url;
+          detectedDirectMediaUrl = res.direct_media_url || null;
           applyEnvatoAudioModeIfNeeded(res.url);
           const platformMap = {
             instagram: 'Reel / Post',
@@ -355,6 +357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   urlInput.addEventListener('input', () => {
+    detectedDirectMediaUrl = null;
     applyEnvatoAudioModeIfNeeded(urlInput.value);
   });
 
@@ -382,12 +385,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Show progress box immediately
     renderProgress({ state: 'extracting', progress: 5, speed: 'Contacting engine...' });
 
+    const options = {};
+    if (detectedDirectMediaUrl) {
+      options.direct_media_url = detectedDirectMediaUrl;
+    }
+
     chrome.runtime.sendMessage(
       { 
         action: 'download', 
         url, 
         format_type: currentFormat, 
-        quality: qualitySelect.value 
+        quality: qualitySelect.value,
+        options
       },
       (res) => {
         if (chrome.runtime.lastError || !res) {

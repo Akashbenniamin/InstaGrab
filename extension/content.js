@@ -111,6 +111,70 @@
     clearTimeout(activeToastTimeout);
   }
 
+  // Extract direct playable CDN stream/image URL from Instagram DOM / performance resources
+  function findInstagramMediaUrl(container = null) {
+    try {
+      const scope = container || document;
+
+      // 1. Direct active or visible <video> element
+      const videos = Array.from(scope.querySelectorAll('video'));
+      let targetVideo = videos.find(v => !v.paused && v.offsetWidth > 100);
+      if (!targetVideo && videos.length > 0) {
+        targetVideo = videos.reduce((prev, curr) => {
+          return (curr.offsetWidth * curr.offsetHeight > (prev ? prev.offsetWidth * prev.offsetHeight : 0)) ? curr : prev;
+        }, null);
+      }
+
+      if (targetVideo) {
+        const vSrc = targetVideo.currentSrc || targetVideo.src;
+        if (vSrc && vSrc.startsWith('http') && vSrc.includes('cdninstagram.com')) {
+          return vSrc;
+        }
+        const source = targetVideo.querySelector('source');
+        if (source && source.src && source.src.startsWith('http') && source.src.includes('cdninstagram.com')) {
+          return source.src;
+        }
+      }
+
+      // 2. If video element uses MediaSource blob: or DASH, inspect performance resource timing for CDN MP4
+      if (typeof performance !== 'undefined' && performance.getEntriesByType) {
+        const resources = performance.getEntriesByType('resource');
+        for (let i = resources.length - 1; i >= 0; i--) {
+          const rName = resources[i].name;
+          if (rName && rName.includes('cdninstagram.com') && (rName.includes('.mp4') || rName.includes('/v/t60.') || rName.includes('mime_type=video_mp4'))) {
+            try {
+              const uObj = new URL(rName);
+              uObj.searchParams.delete('bytestart');
+              uObj.searchParams.delete('byteend');
+              return uObj.href;
+            } catch (_) {
+              return rName;
+            }
+          }
+        }
+      }
+
+      // 3. Inspect high-res <img> elements in container for photos / carousels
+      const imgs = Array.from(scope.querySelectorAll('img[src*="cdninstagram.com"], img[srcset*="cdninstagram.com"]'));
+      let targetImg = imgs.find(img => img.offsetWidth > 200 && img.offsetHeight > 200);
+      if (targetImg) {
+        if (targetImg.srcset) {
+          const parts = targetImg.srcset.split(',').map(s => s.trim().split(/\s+/));
+          if (parts.length > 0) {
+            parts.sort((a, b) => (parseInt(b[1]) || 0) - (parseInt(a[1]) || 0));
+            if (parts[0][0]) return parts[0][0];
+          }
+        }
+        if (targetImg.src && targetImg.src.startsWith('http')) {
+          return targetImg.src;
+        }
+      }
+    } catch (e) {
+      console.warn('[InstaGrab] findInstagramMediaUrl error:', e);
+    }
+    return null;
+  }
+
   // Detect currently active/playing media on the webpage
   function detectActiveMediaOnPage() {
     const host = window.location.hostname.toLowerCase();
@@ -143,16 +207,18 @@
 
     // 3. Instagram
     if (host.includes('instagram.com')) {
+      const directMediaUrl = findInstagramMediaUrl();
+
       // Stories & Highlights
       if (path.includes('/stories/') || path.startsWith('/s/')) {
-        return { url: window.location.href, platform: 'instagram' };
+        return { url: window.location.href, platform: 'instagram', direct_media_url: directMediaUrl };
       }
 
       // Direct post/reel URL
       const directMatch = path.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
       if (directMatch) {
         const type = path.includes('reel') ? 'reel' : (path.includes('tv') ? 'tv' : 'p');
-        return { url: `https://www.instagram.com/${type}/${directMatch[1]}/`, platform: 'instagram' };
+        return { url: `https://www.instagram.com/${type}/${directMatch[1]}/`, platform: 'instagram', direct_media_url: directMediaUrl };
       }
 
       // Check open modal/dialog
@@ -161,7 +227,7 @@
         const link = dialog.querySelector('a[href*="/reel/"], a[href*="/p/"]');
         if (link) {
           const href = link.getAttribute('href');
-          if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram' };
+          if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram', direct_media_url: findInstagramMediaUrl(dialog) || directMediaUrl };
         }
       }
 
@@ -189,7 +255,7 @@
           const link = container.querySelector('a[href*="/reel/"], a[href*="/p/"]');
           if (link) {
             const href = link.getAttribute('href');
-            if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram' };
+            if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram', direct_media_url: findInstagramMediaUrl(container) || directMediaUrl };
           }
         }
       }
@@ -798,10 +864,11 @@
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const article = bar.closest('article');
+          const article = bar.closest('article') || bar.closest('section');
           const postLink = article ? article.querySelector('a[href*="/p/"], a[href*="/reel/"]') : null;
           const url = postLink ? `https://www.instagram.com${postLink.getAttribute('href')}` : window.location.href;
-          downloadMedia(url, btn);
+          const directMediaUrl = findInstagramMediaUrl(article || bar.closest('div'));
+          downloadMedia(url, btn, 'Download', directMediaUrl ? { direct_media_url: directMediaUrl } : {});
         });
 
         const bookmarkContainer = bookmarkSvg.closest('div[role="button"]') || bookmarkSvg.parentElement;
@@ -830,7 +897,11 @@
           btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            downloadMedia(window.location.href, btn);
+            const reelContainer = stack.closest('div[role="dialog"]') || stack.closest('article') || stack.closest('section') || stack.parentElement?.parentElement || document;
+            const link = reelContainer.querySelector ? reelContainer.querySelector('a[href*="/reel/"], a[href*="/p/"]') : null;
+            const targetUrl = link && link.getAttribute('href') ? `https://www.instagram.com${link.getAttribute('href')}` : window.location.href;
+            const directMediaUrl = findInstagramMediaUrl(reelContainer);
+            downloadMedia(targetUrl, btn, 'Download', directMediaUrl ? { direct_media_url: directMediaUrl } : {});
           });
 
           const bookmarkBtn = bookmark.closest('div[role="button"]') || bookmark.parentElement;
@@ -860,7 +931,9 @@
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          downloadMedia(window.location.href, btn);
+          const storyContainer = document.querySelector('section[role="region"]') || document.querySelector('div[role="dialog"]') || document;
+          const directMediaUrl = findInstagramMediaUrl(storyContainer);
+          downloadMedia(window.location.href, btn, 'Download', directMediaUrl ? { direct_media_url: directMediaUrl } : {});
         });
 
         if (closeBtn && closeBtn.parentNode) {

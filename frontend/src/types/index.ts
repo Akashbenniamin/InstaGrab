@@ -42,7 +42,7 @@ export interface DownloadProgress {
   filepath?: string;
   files?: string[];
   error?: string;
-  errorType?: 'invalid_url' | 'helper_offline' | 'private_content' | 'unsupported' | 'network' | 'instagram_changed' | 'unknown';
+  errorType?: 'invalid_url' | 'helper_offline' | 'private_content' | 'rate_limited' | 'unsupported' | 'network' | 'instagram_changed' | 'unknown';
 }
 
 export interface HelperStatus {

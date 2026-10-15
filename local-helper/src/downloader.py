@@ -195,11 +195,11 @@ class Downloader:
         self.active_downloads = {}
         self.active_downloads_lock = threading.Lock()
 
-    def start_download(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True) -> None:
+    def start_download(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True, direct_media_url: str = None) -> None:
         self.progress_store.create(download_id)
         thread = threading.Thread(
             target=self._download_thread,
-            args=(url, download_id, format_type, quality, item_index, as_zip),
+            args=(url, download_id, format_type, quality, item_index, as_zip, direct_media_url),
             daemon=True
         )
         thread.start()
@@ -385,14 +385,13 @@ class Downloader:
                 }
         except Exception as e:
             err_str = str(e)
-            is_ig_auth_error = (
-                'empty media response' in err_str.lower()
-                or 'login' in err_str.lower()
-                or 'private' in err_str.lower()
-                or 'registered users' in err_str.lower()
-            )
+            err_lower = err_str.lower()
+            is_rate_limited = any(x in err_lower for x in ['rate-limit', 'rate limit', 'exceeded the rate-limit', 'wait a few minutes', 'too many requests', '429'])
+            is_ig_private = not is_rate_limited and any(x in err_lower for x in ['this account is private', 'private account', 'only available for registered users who follow', 'only available for registered users'])
+            is_ig_auth_error = is_rate_limited or is_ig_private or ('empty media response' in err_lower)
+
             # Instagram photo / carousel fallback if yt-dlp finds no video formats or fails (and not an auth error)
-            if platform == 'instagram' and not is_ig_auth_error:
+            if platform == 'instagram' and not is_ig_auth_error and not is_rate_limited:
                 try:
                     ig_info = self._fetch_instagram_post_info(url)
                     if ig_info:
@@ -410,7 +409,10 @@ class Downloader:
                 except Exception:
                     pass
 
-            if is_ig_auth_error:
+            if is_rate_limited:
+                raise Exception("Instagram has temporarily rate-limited anonymous queries from your network IP. Use the InstaGrab 1-Click button on Instagram in your browser to download immediately.")
+
+            if is_ig_auth_error or is_ig_private or 'private' in err_lower:
                 raise Exception("This Instagram post is private, age-restricted, or requires login to view.")
 
             # Pinterest fallback if no video found
@@ -460,7 +462,7 @@ class Downloader:
         except Exception as e:
             return False, str(e)
 
-    def _download_thread(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True):
+    def _download_thread(self, url: str, download_id: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True, direct_media_url: str = None):
         is_valid, err_msg, platform = validate_media_url(url)
         if not is_valid:
             self.progress_store.update(download_id, state='error', error=err_msg, errorType='unknown')
@@ -476,6 +478,17 @@ class Downloader:
 
         base_path = self.config.get_download_path()
 
+        with self.active_downloads_lock:
+            self.active_downloads[download_id] = {'cancel': False}
+
+        # If a direct media URL was captured from the user's browser, download it directly (bypasses anonymous rate limits)
+        if direct_media_url:
+            try:
+                if self._download_direct_media(url, direct_media_url, download_id, base_path, format_type=format_type, platform=platform):
+                    return
+            except Exception as direct_err:
+                logging.warning(f"Direct media stream download failed ({direct_err}), falling back to standard extraction.")
+
         # If a specific carousel item index was explicitly requested, download it directly via native extractor
         if platform == 'instagram' and item_index is not None:
             try:
@@ -484,9 +497,6 @@ class Downloader:
             except Exception as e:
                 self.progress_store.update(download_id, state='error', error=f"Download failed: {str(e)}", errorType='unknown')
                 return
-
-        with self.active_downloads_lock:
-            self.active_downloads[download_id] = {'cancel': False}
 
         if platform in ('envato', 'epidemic'):
             try:
@@ -954,19 +964,11 @@ class Downloader:
                     err_str = f"YouTube download error: {str(retry_err)}"
 
             # Check if this error from yt-dlp was due to authentication / private content / empty response
-            is_ig_auth_error = False
-            if 'instagram.' in url.lower() or 'instagr.am' in url.lower():
-                err_lower = err_str.lower()
-                if (
-                    'empty media response' in err_lower
-                    or 'login' in err_lower
-                    or 'private' in err_lower
-                    or 'registered users' in err_lower
-                    or 'checkpoint' in err_lower
-                    or 'rate-limit' in err_lower
-                    or 'requires authentication' in err_lower
-                ):
-                    is_ig_auth_error = True
+            # Check if this error from yt-dlp was due to rate-limiting or private content
+            err_lower = err_str.lower()
+            is_rate_limited = any(x in err_lower for x in ['rate-limit', 'rate limit', 'exceeded the rate-limit', 'wait a few minutes', 'too many requests', '429'])
+            is_ig_private = not is_rate_limited and any(x in err_lower for x in ['this account is private', 'private account', 'only available for registered users who follow', 'only available for registered users'])
+            is_ig_auth_error = is_rate_limited or is_ig_private or ('empty media response' in err_lower) or ('requires authentication' in err_lower)
 
             # Check if Instagram stream encountered rate-limiting, 500, or read timeout on progressive stream
             if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and not is_ig_auth_error:
@@ -1029,7 +1031,10 @@ class Downloader:
                     err_str = f"Pinterest image download failed: {str(img_err)}"
 
             error_type = 'unknown'
-            if is_ig_auth_error or 'login' in err_str.lower() or 'private' in err_str.lower() or '401' in err_str or 'sign in' in err_str.lower():
+            if is_rate_limited or ('rate-limit' in err_lower) or ('rate limit' in err_lower) or ('429' in err_str):
+                error_type = 'rate_limited'
+                err_str = "Instagram has temporarily rate-limited anonymous queries from your network IP. This public post can still be downloaded instantly using the InstaGrab 1-Click button on Instagram in your browser, or wait a few minutes."
+            elif is_ig_private or 'this account is private' in err_lower or ('private' in err_lower and not is_rate_limited) or ('login' in err_lower and not is_rate_limited):
                 error_type = 'private_content'
                 err_str = "This Instagram post is private, restricted, or requires login to view."
             elif 'unsupported' in err_str.lower() or 'unable to extract' in err_str.lower():
@@ -1051,6 +1056,119 @@ class Downloader:
                 if download_id in self.active_downloads:
                     del self.active_downloads[download_id]
             self.progress_store.cleanup_old()
+
+    def _download_direct_media(self, url: str, direct_media_url: str, download_id: str, base_path: str, format_type: str = 'video', platform: str = 'instagram') -> bool:
+        """Directly streams media from a browser-captured CDN URL, bypassing anonymous rate-limits."""
+        import urllib.request
+        import urllib.parse
+        import shutil
+
+        if not direct_media_url or not direct_media_url.startswith(('http://', 'https://')):
+            return False
+
+        self.progress_store.update(download_id, state='downloading', progress=5.0, speed='Initiating direct media stream...')
+
+        parsed = urllib.parse.urlparse(direct_media_url)
+        path_lower = parsed.path.lower()
+        is_video = '.mp4' in path_lower or 'video' in path_lower or format_type == 'video'
+        ext = '.mp4' if is_video else '.jpg'
+
+        shortcode = None
+        if platform == 'instagram':
+            sc_match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+            if sc_match:
+                shortcode = sc_match.group(1)
+
+        if shortcode:
+            type_label = 'reel' if 'reel' in url.lower() else 'post'
+            base_filename = f"instagram_{type_label}_{shortcode}"
+        else:
+            base_filename = f"{platform}_media_{download_id[:8]}"
+
+        job_temp_dir = os.path.join(base_path, '.tmp', download_id)
+        os.makedirs(job_temp_dir, exist_ok=True)
+        temp_file = os.path.join(job_temp_dir, f"{base_filename}{ext}")
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+        }
+        if platform == 'instagram':
+            headers['Referer'] = 'https://www.instagram.com/'
+
+        req = urllib.request.Request(direct_media_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            content_type = resp.headers.get('Content-Type', '').lower()
+            if 'image' in content_type and ext == '.mp4':
+                ext = '.jpg'
+                temp_file = os.path.join(job_temp_dir, f"{base_filename}{ext}")
+            elif 'video' in content_type and ext != '.mp4':
+                ext = '.mp4'
+                temp_file = os.path.join(job_temp_dir, f"{base_filename}{ext}")
+
+            total_bytes = int(resp.headers.get('Content-Length') or 0)
+            downloaded = 0
+            start_t = time.time()
+
+            with open(temp_file, 'wb') as out_f:
+                while True:
+                    with self.active_downloads_lock:
+                        if self.active_downloads.get(download_id, {}).get('cancel'):
+                            raise Exception("Download cancelled by user")
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    out_f.write(chunk)
+                    downloaded += len(chunk)
+                    elapsed = max(time.time() - start_t, 0.05)
+                    bps = downloaded / elapsed
+                    speed_str = f"{bps / 1048576:.1f} MB/s" if bps >= 1048576 else f"{bps / 1024:.0f} KB/s"
+                    pct = (5.0 + (downloaded / total_bytes) * 85.0) if total_bytes > 0 else min(88.0, 10.0 + (downloaded / 500000.0) * 65.0)
+                    self.progress_store.update(
+                        download_id,
+                        state='downloading',
+                        progress=round(min(pct, 90.0), 1),
+                        speed=speed_str,
+                        filename=f"{base_filename}{ext}"
+                    )
+
+        final_filepath = temp_file
+        ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
+
+        if format_type == 'audio' and ext == '.mp4':
+            self.progress_store.update(download_id, state='processing', progress=92.0, speed='Extracting MP3 audio...', filename=f"{base_filename}.mp3")
+            mp3_path = os.path.join(job_temp_dir, f"{base_filename}.mp3")
+            ffmpeg_bin = os.path.join(ffmpeg_dir, 'ffmpeg.exe') if ffmpeg_dir and os.path.exists(os.path.join(ffmpeg_dir, 'ffmpeg.exe')) else 'ffmpeg'
+            cmd = [ffmpeg_bin, '-y', '-i', temp_file, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', mp3_path]
+            si = None
+            if sys.platform == 'win32':
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            subprocess.run(cmd, startupinfo=si, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0, check=True, capture_output=True)
+            if os.path.exists(mp3_path):
+                final_filepath = mp3_path
+                ext = '.mp3'
+        elif ext == '.mp4':
+            self.progress_store.update(download_id, state='processing', progress=92.0, speed='Optimizing MP4 compatibility...', filename=f"{base_filename}.mp4")
+            final_filepath = self._ensure_h264_compatible(final_filepath, ffmpeg_dir, platform=platform, download_id=download_id)
+
+        target_filename = os.path.basename(final_filepath)
+        target_path = os.path.join(base_path, target_filename)
+        if os.path.exists(target_path):
+            try:
+                os.remove(target_path)
+            except Exception:
+                pass
+        shutil.move(final_filepath, target_path)
+
+        self.progress_store.update(
+            download_id,
+            state='complete',
+            progress=100.0,
+            filepath=target_path,
+            filename=target_filename
+        )
+        return True
 
     def _download_pinterest_image(self, url: str, download_id: str, base_path: str):
         import re
