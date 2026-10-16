@@ -1,5 +1,5 @@
 import { DownloadProgress } from '../types';
-import { AlertCircle, CheckCircle2, RefreshCw, X, FolderOpen, Loader2, Lock, Clock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw, X, FolderOpen, Loader2, Lock, Clock, WifiOff } from 'lucide-react';
 import { helperApi } from '../services/helperApi';
 
 interface Props {
@@ -66,7 +66,17 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
             (item.error?.toLowerCase().includes('login') && !item.error?.toLowerCase().includes('rate-limit'))
           );
 
-          const isWarning = isRateLimited || isPrivate;
+          const isNetworkError = !isRateLimited && !isPrivate && (
+            item.errorType === 'network' ||
+            item.error?.toLowerCase().includes('failed to resolve') ||
+            item.error?.toLowerCase().includes('getaddrinfo failed') ||
+            item.error?.toLowerCase().includes('transporterror') ||
+            item.error?.toLowerCase().includes('connection') ||
+            item.error?.toLowerCase().includes('timed out') ||
+            item.error?.toLowerCase().includes('network')
+          );
+
+          const isWarning = isRateLimited || isPrivate || isNetworkError;
 
           return (
             <div 
@@ -95,6 +105,8 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
                   <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                 ) : isPrivate ? (
                   <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                ) : isNetworkError ? (
+                  <WifiOff className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                 ) : (
                   <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                 )}
@@ -108,13 +120,21 @@ export function ProgressDisplay({ downloads, onCancel, onDismiss, onClearComplet
                       ? 'Download Cancelled' 
                       : (isRateLimited 
                           ? 'Instagram Anonymous Rate-Limit (Public Post)' 
-                          : (isPrivate ? 'Private or Follower-Restricted Post' : 'Download Failed'))}
+                          : (isPrivate 
+                              ? 'Private or Follower-Restricted Post' 
+                              : (isNetworkError ? 'Network Connection Glitch' : 'Download Failed')))}
                   </h4>
                   <p className={`text-xs mt-1 leading-relaxed ${
                     isWarning ? 'text-amber-700 dark:text-amber-300/90' : 'text-red-600 dark:text-red-300'
                   } break-words`}>
                     {item.error || (isCancelled ? 'Cancelled by user' : 'An error occurred during download')}
                   </p>
+                  {isNetworkError && (
+                    <div className="mt-2.5 p-2.5 rounded-xl bg-amber-100/60 dark:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/60 text-[11px] text-amber-800 dark:text-amber-200 space-y-1">
+                      <p className="font-semibold">💡 DNS or connection glitch detected:</p>
+                      <p>Your network temporarily lost connection to the media server or DNS timed out. Click <strong>Try Again</strong> below to resume download.</p>
+                    </div>
+                  )}
                   {isRateLimited && (
                     <div className="mt-2.5 p-2.5 rounded-xl bg-amber-100/60 dark:bg-amber-900/40 border border-amber-200/80 dark:border-amber-800/60 text-[11px] text-amber-800 dark:text-amber-200 space-y-1">
                       <p className="font-semibold">💡 This post is public! How to download it right now:</p>

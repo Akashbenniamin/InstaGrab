@@ -265,6 +265,7 @@ class Downloader:
             'extract_flat': False,
             'noplaylist': (platform == 'youtube'),
             'socket_timeout': 20,
+            'source_address': '0.0.0.0',
         }
         ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
         if ffmpeg_dir:
@@ -663,6 +664,7 @@ class Downloader:
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
+            'source_address': '0.0.0.0',
         }
 
         # Apply chunking exclusively to YouTube to bypass DASH rate-limiting without breaking HLS range requests on Pinterest/Instagram
@@ -934,11 +936,13 @@ class Downloader:
         except Exception as e:
             err_str = str(e)
 
-            # Check if YouTube encountered bot block or "The page needs to be reloaded" or read timeout
-            if ('youtube.' in url.lower() or 'youtu.be' in url.lower()) and any(x in err_str.lower() for x in ['page needs to be reloaded', 'confirm you’re not a bot', 'confirm you are not a bot', 'sign in to confirm', 'timed out', 'read operation timed out']):
+            # Check if YouTube encountered bot block, "The page needs to be reloaded", or momentary DNS/connection drop
+            if ('youtube.' in url.lower() or 'youtu.be' in url.lower()) and any(x in err_str.lower() for x in ['page needs to be reloaded', 'confirm you’re not a bot', 'confirm you are not a bot', 'sign in to confirm', 'timed out', 'read operation timed out', 'failed to resolve', 'getaddrinfo failed', 'transporterror', 'connection']):
                 try:
-                    self.progress_store.update(download_id, state='extracting', filename='Retrying with YouTube mobile client...')
+                    self.progress_store.update(download_id, state='extracting', filename='Retrying connection to YouTube...')
+                    time.sleep(1)
                     retry_opts = dict(ydl_opts)
+                    retry_opts['source_address'] = '0.0.0.0'
                     retry_opts.pop('cookiefile', None)
                     retry_opts.pop('cookiesfrombrowser', None)
                     retry_opts['extractor_args'] = {'youtube': {'player_client': ['ios', 'android', 'web']}}
@@ -1058,8 +1062,9 @@ class Downloader:
                 err_str = "This Instagram post is private, restricted, or requires login to view."
             elif 'unsupported' in err_str.lower() or 'unable to extract' in err_str.lower():
                 error_type = 'instagram_changed'
-            elif 'urlopen' in err_str.lower() or 'connection' in err_str.lower() or 'timed out' in err_str.lower():
+            elif any(x in err_str.lower() for x in ['failed to resolve', 'getaddrinfo failed', 'transporterror', 'connection', 'timed out', 'urlopen', 'network']):
                 error_type = 'network'
+                err_str = "Network connection or DNS resolution glitch. Unable to reach media server. Please check your internet connection and click 'Try Again'."
             elif 'cancelled' in err_str.lower():
                 error_type = 'cancelled'
 
