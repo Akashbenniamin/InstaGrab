@@ -128,7 +128,7 @@ export function useDownload() {
     url: string, 
     formatType: string = 'video', 
     quality: string = 'best',
-    options?: { itemIndex?: number; asZip?: boolean }
+    options?: { itemIndex?: number; asZip?: boolean; directMediaUrl?: string }
   ) => {
     setIsSubmitting(true);
     const tempId = 'temp_' + Date.now();

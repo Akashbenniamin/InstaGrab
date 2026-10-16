@@ -12,6 +12,7 @@ interface Props {
     title?: string;
     carouselMedia?: CarouselMediaItem[];
     itemCount?: number;
+    playableUrl?: string | null;
   }) => void;
 }
 
@@ -150,7 +151,8 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
             contentType: val.contentType,
             title: res.title,
             carouselMedia: res.carousel_media,
-            itemCount: res.item_count
+            itemCount: res.item_count,
+            playableUrl: res.playable_url
           });
         }
       }

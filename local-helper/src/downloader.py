@@ -390,6 +390,15 @@ class Downloader:
             is_ig_private = not is_rate_limited and any(x in err_lower for x in ['this account is private', 'private account', 'only available for registered users who follow', 'only available for registered users'])
             is_ig_auth_error = is_rate_limited or is_ig_private or ('empty media response' in err_lower)
 
+            # High-res stream fallback for public Instagram posts / reels when yt-dlp hits rate-limits or fails
+            if platform == 'instagram' and not is_ig_private:
+                try:
+                    fallback_res = self._resolve_instagram_fallback(url)
+                    if fallback_res.get('success') and fallback_res.get('info'):
+                        return fallback_res['info']
+                except Exception as fb_err:
+                    logging.warning(f"Instagram fallback resolver error: {fb_err}")
+
             # Instagram photo / carousel fallback if yt-dlp finds no video formats or fails (and not an auth error)
             if platform == 'instagram' and not is_ig_auth_error and not is_rate_limited:
                 try:
@@ -963,12 +972,22 @@ class Downloader:
                 except Exception as retry_err:
                     err_str = f"YouTube download error: {str(retry_err)}"
 
-            # Check if this error from yt-dlp was due to authentication / private content / empty response
             # Check if this error from yt-dlp was due to rate-limiting or private content
             err_lower = err_str.lower()
             is_rate_limited = any(x in err_lower for x in ['rate-limit', 'rate limit', 'exceeded the rate-limit', 'wait a few minutes', 'too many requests', '429'])
             is_ig_private = not is_rate_limited and any(x in err_lower for x in ['this account is private', 'private account', 'only available for registered users who follow', 'only available for registered users'])
             is_ig_auth_error = is_rate_limited or is_ig_private or ('empty media response' in err_lower) or ('requires authentication' in err_lower)
+
+            # Direct media stream fallback for public Instagram posts / reels when yt-dlp is rate-limited or fails
+            if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and not is_ig_private:
+                try:
+                    self.progress_store.update(download_id, state='downloading', progress=10.0, speed='Resolving media via direct stream...')
+                    fallback_res = self._resolve_instagram_fallback(url)
+                    if fallback_res.get('success'):
+                        if self._download_fallback_items(url, fallback_res, download_id, base_path, format_type=format_type, quality=quality, item_index=item_index, as_zip=as_zip):
+                            return
+                except Exception as fb_dl_err:
+                    logging.warning(f"Instagram fallback download failed: {fb_dl_err}")
 
             # Check if Instagram stream encountered rate-limiting, 500, or read timeout on progressive stream
             if ('instagram.' in url.lower() or 'instagr.am' in url.lower()) and not is_ig_auth_error:
@@ -1056,6 +1075,260 @@ class Downloader:
                 if download_id in self.active_downloads:
                     del self.active_downloads[download_id]
             self.progress_store.cleanup_old()
+
+    def _resolve_instagram_fallback(self, url: str) -> dict:
+        """
+        Extracts direct media CDN stream links for public Instagram posts and reels
+        using high-res media resolvers, bypassing Instagram unauthenticated IP rate limits.
+        """
+        import urllib.request
+        import urllib.parse
+        import json
+        import base64
+        import html
+        import re
+
+        clean_url = normalize_instagram_url(url)
+        endpoints = [
+            'https://fastdl.to/api/ajaxSearch',
+            'https://snapvid.net/api/ajaxSearch',
+        ]
+
+        for endpoint in endpoints:
+            try:
+                domain = endpoint.split('/')[2]
+                payload = urllib.parse.urlencode({
+                    'q': clean_url,
+                    't': 'media',
+                    'lang': 'en',
+                    'v': 'v2'
+                }).encode('utf-8')
+
+                req = urllib.request.Request(
+                    endpoint,
+                    data=payload,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Referer': f'https://{domain}/',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    }
+                )
+
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    res_json = json.loads(response.read().decode('utf-8', errors='ignore'))
+                    if res_json.get('status') != 'ok':
+                        continue
+                    html_data = res_json.get('data', '')
+                    if not html_data:
+                        continue
+
+                    # Extract caption / title
+                    title = 'Instagram Post'
+                    title_m = re.search(r'<p[^>]*class=[\'"][^\'"]*desc[^\'"]*[\'"][^>]*>(.*?)</p>', html_data, re.DOTALL)
+                    if title_m:
+                        t = html.unescape(re.sub(r'<[^>]+>', '', title_m.group(1)).strip())
+                        if t:
+                            title = t[:80]
+
+                    # Extract blocks for individual carousel slides or single items
+                    blocks = re.findall(r'<div class="download-items">(.*?)</div>\s*</li>', html_data, re.DOTALL)
+                    if not blocks:
+                        blocks = [html_data]
+
+                    slides = []
+                    for idx, block in enumerate(blocks):
+                        thumb = None
+                        vid = None
+                        photo = None
+
+                        # Check all links inside block
+                        links = re.findall(r'href=[\'"]([^\'"]+)[\'"](?:[^>]*title=[\'"]([^\'"]+)[\'"])?', block)
+                        for href, link_title in links:
+                            clean_href = html.unescape(href)
+                            if 'token=' in clean_href:
+                                try:
+                                    tok = clean_href.split('token=')[1].split('.')[1]
+                                    tok += '=' * (-len(tok) % 4)
+                                    payload_dict = json.loads(base64.urlsafe_b64decode(tok).decode())
+                                    u = payload_dict.get('url', '')
+                                    t_lower = (link_title or '').lower()
+                                    if 'thumbnail' in t_lower:
+                                        thumb = u
+                                    elif 'video' in t_lower or '.mp4' in u.lower():
+                                        vid = u
+                                    elif 'photo' in t_lower or any(ext in u.lower() for ext in ['.jpg', '.jpeg', '.webp']):
+                                        photo = u
+                                    else:
+                                        if '.mp4' in u.lower():
+                                            vid = u
+                                        else:
+                                            photo = u
+                                except Exception:
+                                    pass
+
+                        # Also check <img src="..."> for thumbnail
+                        if not thumb:
+                            img_m = re.search(r'<img[^>]+src=[\'"]([^\'"]+)[\'"]', block)
+                            if img_m:
+                                clean_img = html.unescape(img_m.group(1))
+                                if 'token=' in clean_img:
+                                    try:
+                                        tok = clean_img.split('token=')[1].split('.')[1]
+                                        tok += '=' * (-len(tok) % 4)
+                                        thumb = json.loads(base64.urlsafe_b64decode(tok).decode()).get('url')
+                                    except Exception:
+                                        pass
+
+                        media_url = vid or photo
+                        if media_url:
+                            slides.append({
+                                'index': idx + 1,
+                                'media_type': 'video' if vid else 'photo',
+                                'url': media_url,
+                                'thumbnail': thumb or photo or media_url,
+                                'filename': f"instagram_item_{idx+1}.{'mp4' if vid else 'jpg'}",
+                                'width': 1080,
+                                'height': 1080,
+                            })
+
+                    if not slides:
+                        continue
+
+                    # Determine primary media item
+                    first_slide = slides[0]
+                    main_video = next((s['url'] for s in slides if s['media_type'] == 'video'), None)
+                    main_photo = next((s['url'] for s in slides if s['media_type'] == 'photo'), None)
+
+                    is_carousel = len(slides) > 1
+                    media_type = 'carousel' if is_carousel else ('video' if main_video else 'photo')
+                    thumbnail = first_slide['thumbnail'] or main_photo or main_video
+
+                    info = {
+                        'title': title,
+                        'thumbnail': thumbnail,
+                        'duration': 0,
+                        'uploader': 'Instagram Creator',
+                        'platform': 'instagram',
+                        'playable_url': main_video or first_slide['url'],
+                        'media_type': media_type,
+                        'carousel_media': slides if is_carousel else [],
+                        'item_count': len(slides),
+                    }
+
+                    return {
+                        'success': True,
+                        'info': info,
+                        'slides': slides,
+                        'main_video': main_video,
+                        'main_photo': main_photo,
+                    }
+
+            except Exception as e:
+                logging.warning(f"Error querying Instagram fallback endpoint {endpoint}: {e}")
+
+        return {'success': False, 'error': 'Could not resolve Instagram media stream.'}
+
+    def _download_fallback_items(self, url: str, fallback_res: dict, download_id: str, base_path: str, format_type: str = 'video', quality: str = 'best', item_index: int = None, as_zip: bool = True) -> bool:
+        """Downloads Instagram media resolved via fallback streams (bypasses anonymous rate limits)."""
+        import urllib.request
+        import shutil
+        import zipfile
+
+        slides = fallback_res.get('slides', [])
+        if not slides:
+            return False
+
+        # If a specific carousel item index was requested:
+        if item_index is not None and len(slides) > 0:
+            target_idx = max(0, min(item_index - 1, len(slides) - 1))
+            target_slide = slides[target_idx]
+            return self._download_direct_media(url, target_slide['url'], download_id, base_path, format_type=format_type, platform='instagram')
+
+        # If single item (not carousel)
+        if len(slides) == 1:
+            return self._download_direct_media(url, slides[0]['url'], download_id, base_path, format_type=format_type, platform='instagram')
+
+        # Multiple items (carousel)
+        job_temp_dir = os.path.join(base_path, '.tmp', download_id)
+        os.makedirs(job_temp_dir, exist_ok=True)
+
+        sc_match = re.search(r'/(?:p|reel|reels|tv|share/reel|share/p)/([A-Za-z0-9_-]+)', url)
+        shortcode = sc_match.group(1) if sc_match else download_id[:8]
+
+        downloaded_files = []
+        total_items = len(slides)
+
+        for idx, item in enumerate(slides):
+            with self.active_downloads_lock:
+                if self.active_downloads.get(download_id, {}).get('cancel'):
+                    raise Exception("Download cancelled by user")
+
+            pct = 10.0 + (idx / total_items) * 75.0
+            self.progress_store.update(download_id, state='downloading', progress=round(pct, 1), speed=f"Downloading slide {idx+1}/{total_items}...")
+
+            item_url = item['url']
+            is_vid = item.get('media_type') == 'video'
+            ext = '.mp4' if is_vid else '.jpg'
+            item_filename = f"instagram_{shortcode}_{idx+1}{ext}"
+            item_temp_path = os.path.join(job_temp_dir, item_filename)
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Referer': 'https://www.instagram.com/',
+            }
+            req = urllib.request.Request(item_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp, open(item_temp_path, 'wb') as out_f:
+                shutil.copyfileobj(resp, out_f)
+
+            downloaded_files.append((item_temp_path, item_filename))
+
+        if as_zip and len(downloaded_files) > 1:
+            zip_filename = f"instagram_{shortcode}_carousel.zip"
+            target_zip = os.path.join(base_path, zip_filename)
+
+            c = 1
+            base_z, ext_z = os.path.splitext(zip_filename)
+            while os.path.exists(target_zip):
+                zip_filename = f"{base_z} ({c}){ext_z}"
+                target_zip = os.path.join(base_path, zip_filename)
+                c += 1
+
+            self.progress_store.update(download_id, state='processing', progress=95.0, speed='Packaging carousel ZIP archive...')
+            with zipfile.ZipFile(target_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                for src_p, arc_n in downloaded_files:
+                    zf.write(src_p, arc_n)
+
+            self.progress_store.update(
+                download_id,
+                state='complete',
+                progress=100.0,
+                filepath=target_zip,
+                filename=zip_filename,
+                files=[zip_filename]
+            )
+            return True
+        else:
+            moved = []
+            for src_p, f_name in downloaded_files:
+                target_p = os.path.join(base_path, f_name)
+                c = 1
+                b_n, e_n = os.path.splitext(f_name)
+                while os.path.exists(target_p):
+                    f_name = f"{b_n} ({c}){e_n}"
+                    target_p = os.path.join(base_path, f_name)
+                    c += 1
+                shutil.move(src_p, target_p)
+                moved.append((target_p, f_name))
+            self.progress_store.update(
+                download_id,
+                state='complete',
+                progress=100.0,
+                filepath=moved[0][0],
+                filename=moved[0][1],
+                files=[m[1] for m in moved]
+            )
+            return True
 
     def _download_direct_media(self, url: str, direct_media_url: str, download_id: str, base_path: str, format_type: str = 'video', platform: str = 'instagram') -> bool:
         """Directly streams media from a browser-captured CDN URL, bypassing anonymous rate-limits."""

@@ -115,7 +115,7 @@ class HelperApi {
     url: string, 
     formatType: string = 'video', 
     quality: string = 'best',
-    options?: { itemIndex?: number; asZip?: boolean }
+    options?: { itemIndex?: number; asZip?: boolean; directMediaUrl?: string }
   ): Promise<string> {
     const payload: Record<string, any> = { 
       url,
@@ -127,6 +127,9 @@ class HelperApi {
     }
     if (options?.asZip !== undefined) {
       payload.as_zip = options.asZip;
+    }
+    if (options?.directMediaUrl) {
+      payload.direct_media_url = options.directMediaUrl;
     }
 
     let response = await fetch(`${this.baseUrl}/api/download`, {

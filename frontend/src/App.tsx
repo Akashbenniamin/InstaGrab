@@ -46,6 +46,7 @@ function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [detectedMediaType, setDetectedMediaType] = useState<string | undefined>(undefined);
   const [carouselMedia, setCarouselMedia] = useState<CarouselMediaItem[] | null>(null);
+  const [detectedPlayableUrl, setDetectedPlayableUrl] = useState<string | null>(null);
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -115,6 +116,7 @@ function App() {
     if (!value.trim()) {
       setDetectedMediaType(undefined);
       setCarouselMedia(null);
+      setDetectedPlayableUrl(null);
     } else {
       const val = validateMediaUrl(value.trim());
       if (val.valid) {
@@ -127,6 +129,7 @@ function App() {
       } else {
         setDetectedMediaType(undefined);
         setCarouselMedia(null);
+        setDetectedPlayableUrl(null);
       }
     }
   };
@@ -156,7 +159,10 @@ function App() {
     const targetUrl = normalized!;
     const effectiveFormat: FormatType = (platform === 'envato' || platform === 'epidemic' || platform === 'spotify') ? 'audio' : formatType;
     const quality = effectiveFormat === 'video' ? videoQuality : audioQuality;
-    const downloadOptions = options || (detectedMediaType === 'carousel' ? { asZip: true } : undefined);
+    const downloadOptions = {
+      ...(options || (detectedMediaType === 'carousel' ? { asZip: true } : {})),
+      directMediaUrl: detectedPlayableUrl || undefined,
+    };
 
     await startDownload(targetUrl, effectiveFormat, quality, downloadOptions);
   };
@@ -302,12 +308,15 @@ function App() {
                   <div className="md:col-span-5 flex flex-col">
                     <MediaPreview 
                       url={url} 
-                      onMediaDetected={({ mediaType, carouselMedia: detectedCarousel }) => {
+                      onMediaDetected={({ mediaType, carouselMedia: detectedCarousel, playableUrl }) => {
                         if (mediaType) setDetectedMediaType(mediaType);
                         if (detectedCarousel && detectedCarousel.length > 0) {
                           setCarouselMedia(detectedCarousel);
                         } else {
                           setCarouselMedia(null);
+                        }
+                        if (playableUrl) {
+                          setDetectedPlayableUrl(playableUrl);
                         }
                       }}
                     />

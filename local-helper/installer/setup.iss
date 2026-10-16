@@ -1,5 +1,5 @@
 #define MyAppName "InstaGrab Helper"
-#define MyAppVersion "1.5.2"
+#define MyAppVersion "1.5.3"
 #define MyAppPublisher "InstaGrab"
 #define MyAppExeName "InstaGrab Helper.exe"
 
