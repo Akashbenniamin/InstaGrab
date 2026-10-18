@@ -1,7 +1,7 @@
 export type DownloadState = 'idle' | 'validating' | 'connecting' | 'extracting' | 'downloading' | 'processing' | 'complete' | 'error' | 'cancelled';
 
 export type FormatType = 'video' | 'audio';
-export type VideoQuality = 'best' | '1080p' | '720p' | '480p' | '360p';
+export type VideoQuality = 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p';
 export type AudioQuality = 'best' | '320k' | '192k' | '128k';
 export type QualityOption = VideoQuality | AudioQuality;
 export type PlatformType = 'instagram' | 'youtube' | 'pinterest' | 'envato' | 'epidemic' | 'magnific' | 'flaticon' | 'spotify' | 'unknown';

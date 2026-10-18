@@ -161,7 +161,7 @@ function App() {
     const quality = effectiveFormat === 'video' ? videoQuality : audioQuality;
     const downloadOptions = {
       ...(options || (detectedMediaType === 'carousel' ? { asZip: true } : {})),
-      directMediaUrl: detectedPlayableUrl || undefined,
+      directMediaUrl: platform === 'instagram' ? (detectedPlayableUrl || undefined) : undefined,
     };
 
     await startDownload(targetUrl, effectiveFormat, quality, downloadOptions);

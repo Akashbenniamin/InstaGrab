@@ -491,8 +491,8 @@ class Downloader:
         with self.active_downloads_lock:
             self.active_downloads[download_id] = {'cancel': False}
 
-        # If a direct media URL was captured from the user's browser, download it directly (bypasses anonymous rate limits)
-        if direct_media_url:
+        # If a direct media URL was captured from the user's browser, download it directly (bypasses anonymous rate limits on Instagram)
+        if direct_media_url and platform == 'instagram':
             try:
                 if self._download_direct_media(url, direct_media_url, download_id, base_path, format_type=format_type, platform=platform):
                     return
@@ -694,9 +694,9 @@ class Downloader:
                 'preferredquality': audio_bitrate,
             }]
         else:
-            # Video (MP4) - Prioritize progressive H.264 MP4, falling back to AVC+AAC muxing for editing software compatibility
+            # Video (MP4) - Prioritize requested resolution, choosing AVC/H.264 when available or VP9/AV1 for 4K/2K
             ydl_opts['merge_output_format'] = 'mp4'
-            ydl_opts['format_sort'] = ['vcodec:h264', 'acodec:m4a', 'res', 'fps']
+            ydl_opts['format_sort'] = ['res', 'fps', 'vcodec:h264', 'acodec:m4a']
             if platform == 'instagram':
                 # Instagram progressive MP4 CDN URLs frequently 500 / 429 / timeout on unauthenticated requests.
                 # Prioritize DASH video + DASH audio streams, which are unthrottled and highest resolution.
@@ -734,55 +734,66 @@ class Downloader:
                         'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
                         'bestvideo+bestaudio/best'
                     )
+            elif quality in ('2160p', '4k'):
+                ydl_opts['format'] = (
+                    'bestvideo[height<=2160]+bestaudio/'
+                    'bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo+bestaudio/best'
+                )
+            elif quality in ('1440p', '2k'):
+                ydl_opts['format'] = (
+                    'bestvideo[height<=1440]+bestaudio/'
+                    'bestvideo[height<=1440][ext=mp4]+bestaudio[ext=m4a]/'
+                    'bestvideo+bestaudio/best'
+                )
             elif quality == '1080p':
                 ydl_opts['format'] = (
-                    'best[height<=1080][ext=mp4][protocol^=http]/'
-                    'bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
-                    'bestvideo[height<=1080][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=1080]+bestaudio/'
                     'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
-                    'best[height<=1080][ext=mp4]/'
-                    'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
+                    'bestvideo[height<=1080]/best[height<=1080]/'
+                    'bestvideo+bestaudio/best'
                 )
             elif quality == '720p':
                 ydl_opts['format'] = (
-                    'best[height<=720][ext=mp4][protocol^=http]/'
-                    'bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
-                    'bestvideo[height<=720][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=720]+bestaudio/'
                     'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-                    'best[height<=720][ext=mp4]/'
-                    'bestvideo[height<=720]+bestaudio/best[height<=720]/best'
+                    'bestvideo[height<=720]/best[height<=720]/'
+                    'bestvideo+bestaudio/best'
                 )
             elif quality == '480p':
                 ydl_opts['format'] = (
-                    'best[height<=480][ext=mp4][protocol^=http]/'
-                    'bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
-                    'bestvideo[height<=480][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=480]+bestaudio/'
                     'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-                    'best[height<=480][ext=mp4]/'
-                    'bestvideo[height<=480]+bestaudio/best[height<=480]/best'
+                    'bestvideo[height<=480]/best[height<=480]/'
+                    'bestvideo+bestaudio/best'
                 )
             elif quality == '360p':
                 ydl_opts['format'] = (
-                    'best[height<=360][ext=mp4][protocol^=http]/'
-                    'bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/'
-                    'bestvideo[height<=360][vcodec^=avc]+bestaudio/'
+                    'bestvideo[height<=360]+bestaudio/'
                     'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-                    'best[height<=360][ext=mp4]/'
-                    'bestvideo[height<=360]+bestaudio/best[height<=360]/best'
+                    'bestvideo[height<=360]/best[height<=360]/'
+                    'bestvideo+bestaudio/best'
                 )
             else:
-                # 'best' (Highest Quality available with progressive MP4 preference)
+                # 'best' (Highest Quality available - 4K UHD, 2K, 1080p, etc.)
                 ydl_opts['format'] = (
-                    'best[ext=mp4][protocol^=http]/'
-                    'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/'
-                    'bestvideo[vcodec^=avc]+bestaudio/'
+                    'bestvideo+bestaudio/'
                     'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
-                    'best[ext=mp4]/'
                     'bestvideo+bestaudio/best'
                 )
 
         import shutil
-        node_path = shutil.which('node')
+        node_path = shutil.which('node') or shutil.which('nodejs')
+        if not node_path and sys.platform == 'win32':
+            for candidate in [
+                r'C:\Program Files\nodejs\node.exe',
+                r'C:\Program Files (x86)\nodejs\node.exe',
+                os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'nodejs', 'node.exe'),
+                os.path.join(os.environ.get('APPDATA', ''), 'npm', 'node.exe'),
+            ]:
+                if os.path.exists(candidate):
+                    node_path = candidate
+                    break
         if node_path:
             ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
 
@@ -945,7 +956,7 @@ class Downloader:
                     retry_opts['source_address'] = '0.0.0.0'
                     retry_opts.pop('cookiefile', None)
                     retry_opts.pop('cookiesfrombrowser', None)
-                    retry_opts['extractor_args'] = {'youtube': {'player_client': ['ios', 'android', 'web']}}
+                    retry_opts.pop('extractor_args', None)
                     with yt_dlp.YoutubeDL(retry_opts) as retry_ydl:
                         info = retry_ydl.extract_info(url, download=True)
                         filepath = retry_ydl.prepare_filename(info)
@@ -1582,6 +1593,9 @@ class Downloader:
                 vf_filters = 'setsar=1,setpts=PTS-STARTPTS'
                 audio_args = ['-af', 'asetpts=PTS-STARTPTS,aresample=async=1', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000'] if a_stream else ['-an']
 
+                target_br = '45M' if (height and height >= 2160) else ('28M' if (height and height >= 1440) else '18M')
+                max_br = '60M' if (height and height >= 2160) else ('38M' if (height and height >= 1440) else '25M')
+
                 # Attempt hardware acceleration for ultra-fast transcode (AMD AMF, NVIDIA NVENC, Intel QSV)
                 # Fall back to libx264 if hardware encoder unavailable
                 enc_candidates = [
@@ -1590,7 +1604,7 @@ class Downloader:
                         ffmpeg_bin, '-y', '-i', filepath,
                         '-vf', vf_filters,
                         *audio_args,
-                        '-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-b:v', '18M', '-maxrate', '25M',
+                        '-c:v', 'h264_amf', '-usage', 'transcoding', '-quality', 'quality', '-b:v', target_br, '-maxrate', max_br,
                         '-g', '60', '-bf', '0', '-pix_fmt', 'yuv420p',
                         '-fps_mode', 'cfr', '-avoid_negative_ts', 'make_zero',
                         '-movflags', '+faststart',

@@ -22,7 +22,8 @@ export const DownloadOptions: React.FC<Props> = ({
   disabled = false,
 }) => {
   const videoQualityOptions: { id: VideoQuality; label: string; sublabel: string; recommended?: boolean }[] = [
-    { id: 'best', label: 'Highest Quality', sublabel: 'Auto (Best available)', recommended: true },
+    { id: 'best', label: 'Highest Quality', sublabel: 'Auto (Up to 4K)', recommended: true },
+    { id: '2160p', label: '4K UHD', sublabel: '2160p' },
     { id: '1080p', label: '1080p', sublabel: 'Full HD' },
     { id: '720p', label: '720p', sublabel: 'HD' },
     { id: '480p', label: '480p', sublabel: 'Standard' },
