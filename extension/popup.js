@@ -47,10 +47,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   const VIDEO_QUALITIES = [
-    { value: 'best', label: 'Best Quality' },
+    { value: 'best', label: 'Best Quality (Up to 4K)' },
+    { value: '2160p', label: '4K UHD (2160p)' },
+    { value: '1440p', label: '2K QHD (1440p)' },
     { value: '1080p', label: '1080p FHD' },
     { value: '720p', label: '720p HD' },
-    { value: '480p', label: '480p SD' }
+    { value: '480p', label: '480p SD' },
+    { value: '360p', label: '360p Compact' }
   ];
 
   const AUDIO_QUALITIES = [
