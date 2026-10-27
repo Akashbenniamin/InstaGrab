@@ -2,6 +2,7 @@
 const HELPER_BASE = 'http://127.0.0.1:18765';
 let cachedToken = null;
 let currentDownload = null; // { downloadId, state, progress, speed, eta, filename, error }
+let activeChromeDownloadId = null; // Tracks active browser download for cancellation
 
 // Auto-pair with Desktop Engine
 async function getAuthToken() {
@@ -39,33 +40,87 @@ async function checkHealth() {
 // Sanitize filename for Chrome download API
 function sanitizeFilename(name) {
   if (!name) return 'media_download.mp4';
-  return name.replace(/[<>:"/\\|?*]/g, '_').trim();
+  return name
+    .replace(/[<>:"/\\|?*\uff1f\u29f8\u2044\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-// Helper: Trigger native browser download
+// Helper: Trigger native browser download with full error reporting and state verification
 function triggerBrowserDownload(fileUrl, filename) {
   return new Promise((resolve) => {
     if (!chrome.downloads || !chrome.downloads.download) {
-      resolve({ fallback: true });
+      const err = 'Browser download permission blocked or missing. Please grant Downloads permission for InstaGrab in chrome://extensions.';
+      console.warn('[InstaGrab]', err);
+      resolve({ error: err });
       return;
     }
-    chrome.downloads.download(
-      {
-        url: fileUrl,
-        filename: sanitizeFilename(filename),
-        conflictAction: 'uniquify',
-        saveAs: false
-      },
-      (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[InstaGrab] chrome.downloads error:', chrome.runtime.lastError.message);
-          resolve({ error: chrome.runtime.lastError.message });
-        } else {
+
+    try {
+      chrome.downloads.download(
+        {
+          url: fileUrl,
+          filename: sanitizeFilename(filename),
+          conflictAction: 'uniquify',
+          saveAs: false
+        },
+        (downloadId) => {
+          if (chrome.runtime.lastError) {
+            const errMsg = chrome.runtime.lastError.message || 'Unknown browser download error';
+            console.warn('[InstaGrab] chrome.downloads.download error:', errMsg);
+            resolve({ error: errMsg });
+            return;
+          }
+
+          if (!downloadId) {
+            resolve({ error: 'Browser failed to initialize download.' });
+            return;
+          }
+
+          activeChromeDownloadId = downloadId;
           console.log('[InstaGrab] Browser download started, id:', downloadId);
-          resolve({ downloadId });
+
+          let timer = null;
+          const onChangedListener = (delta) => {
+            if (delta.id === downloadId) {
+              if (delta.state && delta.state.current === 'complete') {
+                chrome.downloads.onChanged.removeListener(onChangedListener);
+                if (timer) clearTimeout(timer);
+                activeChromeDownloadId = null;
+                resolve({ success: true, downloadId });
+              } else if (delta.state && delta.state.current === 'interrupted') {
+                chrome.downloads.onChanged.removeListener(onChangedListener);
+                if (timer) clearTimeout(timer);
+                activeChromeDownloadId = null;
+                const reason = delta.error ? delta.error.current : 'Download interrupted';
+                resolve({ error: `Browser download interrupted (${reason})` });
+              }
+            }
+          };
+
+          chrome.downloads.onChanged.addListener(onChangedListener);
+
+          // 45s safety timeout: verify state before assuming success
+          timer = setTimeout(() => {
+            chrome.downloads.onChanged.removeListener(onChangedListener);
+            activeChromeDownloadId = null;
+            chrome.downloads.search({ id: downloadId }, (items) => {
+              if (items && items[0]) {
+                if (items[0].state === 'interrupted') {
+                  resolve({ error: `Browser download interrupted: ${items[0].error || 'Failed'}` });
+                } else {
+                  resolve({ success: true, downloadId });
+                }
+              } else {
+                resolve({ success: true, downloadId });
+              }
+            });
+          }, 45000);
         }
-      }
-    );
+      );
+    } catch (e) {
+      resolve({ error: e.message || 'Exception occurred while initiating browser download' });
+    }
   });
 }
 
@@ -211,20 +266,39 @@ async function pollDownloadStatus(downloadId, token, tabId) {
     }
   }
 
-  // Hand-off completed file(s) to native Chrome / Browser Download Manager
+  // Hand-off completed file(s) to native Chrome / Browser Download Manager with full error detection
   if (completedFiles && completedFiles.length > 1) {
+    let failedCount = 0;
+    let lastError = null;
     for (let i = 0; i < completedFiles.length; i++) {
       const f = completedFiles[i];
       const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(f)}?token=${token}`;
-      await triggerBrowserDownload(streamUrl, f);
+      const res = await triggerBrowserDownload(streamUrl, f);
+      if (res && res.error) {
+        failedCount++;
+        lastError = res.error;
+      }
       await new Promise(r => setTimeout(r, 350));
+    }
+
+    if (failedCount === completedFiles.length) {
+      currentDownload = {
+        downloadId,
+        state: 'error',
+        error: `Could not save to browser: ${lastError || 'Permission error'}. (Files are saved in Downloads\\InstaGrab on your PC).`
+      };
+      broadcastProgress(currentDownload, tabId);
+      setTimeout(() => {
+        if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
+      }, 12000);
+      return;
     }
 
     currentDownload = {
       downloadId,
       state: 'complete',
       progress: 100,
-      filename: `${completedFiles.length} files saved`
+      filename: `${completedFiles.length - failedCount} files saved to browser downloads`
     };
 
     broadcastProgress(currentDownload, tabId);
@@ -234,7 +308,22 @@ async function pollDownloadStatus(downloadId, token, tabId) {
     }, 10000);
   } else if (completedFilename) {
     const streamUrl = `${HELPER_BASE}/api/file/download/${encodeURIComponent(completedFilename)}?token=${token}`;
-    await triggerBrowserDownload(streamUrl, completedFilename);
+    const res = await triggerBrowserDownload(streamUrl, completedFilename);
+
+    if (res && res.error) {
+      console.warn('[InstaGrab] Browser download hand-off failed:', res.error);
+      currentDownload = {
+        downloadId,
+        state: 'error',
+        error: `Could not save to browser: ${res.error}. (File is saved in Downloads\\InstaGrab on your PC).`,
+        filename: completedFilename
+      };
+      broadcastProgress(currentDownload, tabId);
+      setTimeout(() => {
+        if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
+      }, 12000);
+      return;
+    }
 
     currentDownload = {
       downloadId,
@@ -245,6 +334,17 @@ async function pollDownloadStatus(downloadId, token, tabId) {
 
     broadcastProgress(currentDownload, tabId);
 
+    setTimeout(() => {
+      if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
+    }, 10000);
+  } else {
+    // Neither completedFilename nor completedFiles was set (timeout or engine drop)
+    currentDownload = {
+      downloadId,
+      state: 'error',
+      error: 'Download timed out or Desktop Engine connection was interrupted.'
+    };
+    broadcastProgress(currentDownload, tabId);
     setTimeout(() => {
       if (currentDownload && currentDownload.downloadId === downloadId) currentDownload = null;
     }, 10000);
@@ -522,4 +622,56 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     startDownload(request.url, request.format_type, request.quality, tabId, request.options || {}).then(sendResponse);
     return true;
   }
+  if (request.action === 'cancelDownload') {
+    cancelActiveDownload().then(sendResponse);
+    return true;
+  }
 });
+
+// Cancel active download in desktop helper and in browser
+async function cancelActiveDownload() {
+  if (!currentDownload || !currentDownload.downloadId) {
+    return { success: false, error: 'No active download to cancel' };
+  }
+  const dlId = currentDownload.downloadId;
+  const token = await getAuthToken();
+
+  // 1. Cancel in desktop helper engine
+  if (token) {
+    try {
+      await fetch(`${HELPER_BASE}/api/download/${dlId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'InstaGrab',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+    } catch (e) {
+      console.warn('[InstaGrab] Error cancelling helper download:', e);
+    }
+  }
+
+  // 2. Cancel in Chrome downloads if browser stream is active
+  if (activeChromeDownloadId && chrome.downloads && chrome.downloads.cancel) {
+    try {
+      chrome.downloads.cancel(activeChromeDownloadId, () => {});
+    } catch (_) {}
+    activeChromeDownloadId = null;
+  }
+
+  // 3. Update state and broadcast cancellation
+  currentDownload = {
+    downloadId: dlId,
+    state: 'error',
+    error: 'Download cancelled by user'
+  };
+  broadcastProgress(currentDownload, null);
+
+  setTimeout(() => {
+    if (currentDownload && currentDownload.downloadId === dlId) {
+      currentDownload = null;
+    }
+  }, 4000);
+
+  return { success: true };
+}

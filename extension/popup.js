@@ -157,12 +157,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Cancel active download button listener
+  const cancelBtnEl = document.getElementById('cancel-btn');
+  if (cancelBtnEl) {
+    cancelBtnEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      cancelBtnEl.disabled = true;
+      cancelBtnEl.innerHTML = '<span>Cancelling...</span>';
+      btnText.textContent = 'Cancelling...';
+      progState.textContent = 'Cancelling download...';
+      chrome.runtime.sendMessage({ action: 'cancelDownload' }, (res) => {
+        cancelBtnEl.disabled = false;
+        cancelBtnEl.innerHTML = `
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          <span>Cancel Download</span>
+        `;
+        if (res && res.error) {
+          showMessage(res.error, true);
+        } else {
+          showMessage('Download cancelled', false);
+        }
+      });
+    });
+  }
+
   // Live progress display logic
   function renderProgress(data) {
     if (!data || !data.state) return;
 
+    const cancelBtn = document.getElementById('cancel-btn');
+
     if (data.state === 'complete') {
       progressBox.style.display = 'block';
+      if (cancelBtn) cancelBtn.style.display = 'none';
       progFill.style.width = '100%';
       progPct.textContent = '100%';
       progState.textContent = '✓ Download complete!';
@@ -180,6 +207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (data.state === 'error') {
       progressBox.style.display = 'none';
+      if (cancelBtn) cancelBtn.style.display = 'none';
       downloadBtn.disabled = false;
       btnText.textContent = currentFormat === 'audio' ? 'Download Audio (MP3)' : 'Download to Browser';
       showMessage(data.error || 'Download failed during extraction', true);
@@ -188,6 +216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // In-progress states (extracting, downloading, processing)
     progressBox.style.display = 'block';
+    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
     downloadBtn.disabled = true;
     btnText.textContent = 'Downloading...';
 

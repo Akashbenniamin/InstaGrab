@@ -22,7 +22,12 @@
             </div>
             <span class="instagrab-toast-title">InstaGrab Downloader</span>
           </div>
-          <span class="instagrab-toast-badge"></span>
+          <div class="instagrab-toast-actions">
+            <span class="instagrab-toast-badge"></span>
+            <button type="button" class="instagrab-toast-cancel" title="Cancel Download">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
         </div>
         <span class="instagrab-toast-msg">Starting download...</span>
         <div class="instagrab-toast-bar-track">
@@ -41,6 +46,29 @@
     const badgeEl = toast.querySelector('.instagrab-toast-badge');
     const msgEl = toast.querySelector('.instagrab-toast-msg');
     const fillEl = toast.querySelector('.instagrab-toast-bar-fill');
+    const cancelBtn = toast.querySelector('.instagrab-toast-cancel');
+
+    if (cancelBtn && !cancelBtn.dataset.bound) {
+      cancelBtn.dataset.bound = 'true';
+      cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelBtn.disabled = true;
+        if (msgEl) msgEl.textContent = 'Cancelling download...';
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ action: 'cancelDownload' });
+        }
+      });
+    }
+
+    if (cancelBtn) {
+      if (isError || state === 'error' || state === 'complete') {
+        cancelBtn.style.display = 'none';
+      } else {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+      }
+    }
 
     if (isError || state === 'error') {
       if (iconEl) {
@@ -393,7 +421,7 @@
           progress: msg.progress,
           speed: msg.speed,
           eta: msg.eta,
-          message: msg.filename ? msg.filename : (msg.state === 'processing' ? 'Processing media...' : 'Downloading...'),
+          message: msg.error ? msg.error : (msg.filename ? msg.filename : (msg.state === 'processing' ? 'Processing media...' : 'Downloading...')),
           isError: msg.state === 'error'
         });
 

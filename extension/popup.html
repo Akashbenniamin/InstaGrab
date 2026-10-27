@@ -425,6 +425,44 @@
       white-space: nowrap;
     }
 
+    .progress-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .cancel-btn {
+      padding: 4px 10px;
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .cancel-btn:hover {
+      background: #ef4444;
+      color: #ffffff;
+      border-color: #ef4444;
+    }
+
+    .cancel-btn:active {
+      transform: scale(0.97);
+    }
+
+    .cancel-btn svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      stroke-width: 2.5;
+    }
+
     #msg {
       margin-top: 10px;
       font-size: 11px;
@@ -608,6 +646,12 @@
     <div class="progress-detail">
       <span id="prog-speed">Connecting to engine...</span>
       <span id="prog-eta"></span>
+    </div>
+    <div class="progress-actions">
+      <button type="button" id="cancel-btn" class="cancel-btn" title="Cancel this download">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <span>Cancel Download</span>
+      </button>
     </div>
   </div>
 

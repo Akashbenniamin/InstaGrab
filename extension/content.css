@@ -992,6 +992,12 @@ div.showcase__item:hover .instagrab-card-bar {
   fill: none !important;
 }
 
+.instagrab-toast-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
 .instagrab-toast-badge {
   font-size: 11px !important;
   font-weight: 700 !important;
@@ -999,13 +1005,43 @@ div.showcase__item:hover .instagrab-card-bar {
   font-variant-numeric: tabular-nums !important;
 }
 
+.instagrab-toast-cancel {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 4px !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: all 0.15s ease !important;
+}
+
+.instagrab-toast-cancel:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  transform: scale(1.08) !important;
+}
+
+.instagrab-toast-cancel svg {
+  width: 12px !important;
+  height: 12px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.5 !important;
+  fill: none !important;
+}
+
 .instagrab-toast-msg {
   font-size: 12px !important;
   color: #9ca3af !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+  white-space: normal !important;
+  word-break: break-word !important;
   line-height: 1.4 !important;
+  max-height: 48px !important;
+  overflow-y: auto !important;
 }
 
 /* Live Progress Bar Track & Fill */
