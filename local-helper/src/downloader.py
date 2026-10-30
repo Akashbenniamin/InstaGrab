@@ -2773,34 +2773,61 @@ class Downloader:
         os.makedirs(job_temp_dir, exist_ok=True)
         temp_file = os.path.join(job_temp_dir, f"{safe_title}{ext}")
 
+        cand_urls = []
+        for u in [primary_url, fallback_url]:
+            if u and u not in cand_urls:
+                cand_urls.append(u)
+
+        def get_referer_for_url(cand_u):
+            lower_u = (cand_u or '').lower() + ' ' + url.lower()
+            if 'flaticon' in lower_u or platform == 'flaticon':
+                return 'https://www.flaticon.com/'
+            if 'freepik' in lower_u or 'cdnpk' in lower_u:
+                return 'https://www.freepik.com/'
+            return 'https://magnific.com/'
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            'Accept': '*/*',
-            'Referer': 'https://www.flaticon.com/' if platform == 'flaticon' else 'https://www.magnific.com/',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Referer': get_referer_for_url(primary_url),
         }
 
         try:
             resp_obj = None
-            for cand_u in ([primary_url, fallback_url] if fallback_url != primary_url else [primary_url]):
+            curl_resp = None
+            last_dl_err = None
+
+            for cand_u in cand_urls:
+                hdrs = dict(headers)
+                hdrs['Referer'] = get_referer_for_url(cand_u)
+                # 1. Try urllib first
                 try:
-                    req = urllib.request.Request(cand_u, headers=headers)
+                    req = urllib.request.Request(cand_u, headers=hdrs)
                     resp_obj = urllib.request.urlopen(req, timeout=25)
                     break
                 except Exception as first_err:
-                    if cand_u == fallback_url:
-                        raise first_err
-                    continue
+                    last_dl_err = first_err
+                    # 2. Fallback to curl_cffi with Chrome TLS impersonation to bypass Cloudflare/Akamai
+                    try:
+                        from curl_cffi import requests as cffi_requests
+                        r = cffi_requests.get(cand_u, headers=hdrs, impersonate='chrome110', timeout=25, stream=True)
+                        if r.status_code == 200:
+                            curl_resp = r
+                            break
+                    except Exception as cffi_err:
+                        last_dl_err = cffi_err
+                    if cand_u == cand_urls[-1] and not curl_resp and not resp_obj:
+                        raise last_dl_err or Exception(f"Could not reach {label} image CDN")
 
-            with resp_obj as resp:
-                total_bytes = int(resp.headers.get('Content-Length') or 0)
+            if curl_resp:
+                total_bytes = int(curl_resp.headers.get('content-length') or 0)
                 downloaded = 0
                 start_t = time.time()
                 with open(temp_file, 'wb') as out_f:
-                    while True:
+                    for chunk in curl_resp.iter_content(chunk_size=32768):
                         with self.active_downloads_lock:
                             if self.active_downloads.get(download_id, {}).get('cancel'):
                                 raise Exception("Download cancelled by user")
-                        chunk = resp.read(32768)
                         if not chunk:
                             break
                         out_f.write(chunk)
@@ -2816,6 +2843,32 @@ class Downloader:
                             speed=speed_str,
                             filename=f"{safe_title}{ext}"
                         )
+            elif resp_obj:
+                with resp_obj as resp:
+                    total_bytes = int(resp.headers.get('Content-Length') or 0)
+                    downloaded = 0
+                    start_t = time.time()
+                    with open(temp_file, 'wb') as out_f:
+                        while True:
+                            with self.active_downloads_lock:
+                                if self.active_downloads.get(download_id, {}).get('cancel'):
+                                    raise Exception("Download cancelled by user")
+                            chunk = resp.read(32768)
+                            if not chunk:
+                                break
+                            out_f.write(chunk)
+                            downloaded += len(chunk)
+                            elapsed = max(time.time() - start_t, 0.05)
+                            bps = downloaded / elapsed
+                            speed_str = f"{bps / 1048576:.1f} MB/s" if bps >= 1048576 else f"{bps / 1024:.0f} KB/s"
+                            pct = (15.0 + (downloaded / total_bytes) * 75.0) if total_bytes > 0 else min(88.0, 20.0 + (downloaded / 300000.0) * 50.0)
+                            self.progress_store.update(
+                                download_id,
+                                state='downloading',
+                                progress=round(min(pct, 90.0), 1),
+                                speed=speed_str,
+                                filename=f"{safe_title}{ext}"
+                            )
 
             if is_icon:
                 # Guarantee valid PNG with preserved RGBA transparency

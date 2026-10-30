@@ -239,7 +239,8 @@ async function pollDownloadStatus(downloadId, token, tabId) {
           progress: status.progress || 0,
           speed: status.speed || '',
           eta: status.eta || '',
-          filename: status.filename || ''
+          filename: status.filename || '',
+          error: status.error || ''
         };
 
         broadcastProgress(currentDownload, tabId);
@@ -602,6 +603,80 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 
 
 // Message Listener for Content Scripts & Popup
+// Direct Image Download (High-Res Browser Fetch + Native Save)
+async function handleDirectDownloadImage(srcUrl, filename, tabId = null) {
+  const safeFilename = sanitizeFilename(filename || extractPngFilename(srcUrl));
+  if (tabId) {
+    chrome.tabs.sendMessage(tabId, {
+      action: 'downloadProgress',
+      state: 'downloading',
+      progress: 30,
+      speed: 'Preparing high-res download...',
+      filename: safeFilename
+    }).catch(() => {});
+  }
+
+  try {
+    const dataUrl = await convertImageToPngDataUrl(srcUrl);
+
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'downloadProgress',
+        state: 'downloading',
+        progress: 80,
+        speed: 'Saving to browser...',
+        filename: safeFilename
+      }).catch(() => {});
+    }
+
+    const res = await triggerBrowserDownload(dataUrl, safeFilename);
+    if (res && res.error) {
+      throw new Error(res.error);
+    }
+
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'downloadProgress',
+        state: 'complete',
+        progress: 100,
+        filename: safeFilename
+      }).catch(() => {});
+    }
+
+    // Also trigger Desktop Engine backup in background if available
+    getAuthToken().then(token => {
+      if (token) {
+        fetch(`${HELPER_BASE}/api/download`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'InstaGrab',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            url: srcUrl,
+            direct_media_url: srcUrl,
+            format_type: 'video',
+            quality: 'best'
+          })
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+
+    return { success: true, filename: safeFilename };
+  } catch (err) {
+    console.error('[InstaGrab] directDownloadImage error:', err);
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'downloadProgress',
+        state: 'error',
+        error: err.message || 'Failed to download image'
+      }).catch(() => {});
+    }
+    return { success: false, error: err.message || 'Failed to download image' };
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'checkHealth') {
     checkHealth().then(sendResponse);

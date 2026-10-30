@@ -4,6 +4,7 @@
   const COPY_ICON = `<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
   const SPINNER_ICON = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="12"></circle></svg>`;
   const CHECK_ICON = `<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+  const PASTE_ICON = `<svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M9 12h6"></path><path d="M9 16h6"></path></svg>`;
 
   let activeToastTimeout = null;
 
@@ -421,7 +422,7 @@
           progress: msg.progress,
           speed: msg.speed,
           eta: msg.eta,
-          message: msg.error ? msg.error : (msg.filename ? msg.filename : (msg.state === 'processing' ? 'Processing media...' : 'Downloading...')),
+          message: msg.error ? msg.error : (msg.state === 'error' ? 'Download failed' : (msg.filename ? msg.filename : (msg.state === 'processing' ? 'Processing media...' : 'Downloading...'))),
           isError: msg.state === 'error'
         });
 
@@ -628,6 +629,74 @@
   }
 
   // Copy any image/icon URL as a pure PNG to the system clipboard
+  // Direct Image Download via background service worker (High-Res Browser Fetch + Native Save)
+  async function downloadImageDirectly(imageUrl, filename, button, label = 'Image') {
+    if (!imageUrl || (button && button.classList.contains('instagrab-loading'))) return;
+    const origHtml = button ? button.innerHTML : '';
+    if (button) {
+      button.classList.add('instagrab-loading');
+      button.innerHTML = origHtml.includes('<span') ? `${SPINNER_ICON} <span>Downloading...</span>` : `${SPINNER_ICON}`;
+    }
+
+    const restoreBtn = (isSuccess = false) => {
+      if (!button) return;
+      button.classList.remove('instagrab-loading');
+      if (isSuccess) {
+        button.classList.add('instagrab-success');
+        button.innerHTML = origHtml.includes('<span') ? `${CHECK_ICON} <span>Saved!</span>` : `${CHECK_ICON}`;
+        setTimeout(() => {
+          button.classList.remove('instagrab-success');
+          button.innerHTML = origHtml;
+        }, 3000);
+      } else {
+        button.innerHTML = origHtml;
+      }
+    };
+
+    updateToast({
+      message: `Downloading ${label}...`,
+      progress: 30,
+      state: 'downloading'
+    });
+
+    try {
+      const res = await new Promise((resolve) => {
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({
+            action: 'directDownloadImage',
+            url: imageUrl,
+            filename: filename
+          }, resolve);
+        } else {
+          resolve({ success: false, error: 'Extension runtime unavailable' });
+        }
+      });
+
+      if (res && res.success) {
+        restoreBtn(true);
+        updateToast({
+          message: `✓ Saved to Downloads folder!`,
+          progress: 100,
+          state: 'complete'
+        });
+      } else {
+        console.warn('[InstaGrab] directDownloadImage error, falling back:', res && res.error);
+        restoreBtn(false);
+        updateToast({
+          message: '❌ ' + ((res && res.error) || 'Download failed'),
+          isError: true
+        });
+      }
+    } catch (err) {
+      console.warn('[InstaGrab] directDownloadImage exception:', err);
+      restoreBtn(false);
+      updateToast({
+        message: '❌ Could not download: ' + (err.message || 'Permission denied'),
+        isError: true
+      });
+    }
+  }
+
   async function copyImageAsPngToClipboard(imageUrl, button) {
     if (!imageUrl || (button && button.classList.contains('instagrab-loading'))) return;
     const origHtml = button ? button.innerHTML : '';
@@ -1276,7 +1345,160 @@
     }
   }
 
+  // Detects and injects Download + Copy buttons on Freepik / Magnific Expanded Image Views
+  function scanMagnificExpandedView() {
+    // 1. Find the main expanded image (largest visible image on screen not in carousels/grids)
+    const imgs = Array.from(document.querySelectorAll('img')).filter(img => {
+      const src = img.currentSrc || img.src || '';
+      if (!src) return false;
+      if (src.includes('avatar') || src.includes('profile') || src.includes('logo') || src.includes('icon')) return false;
+      if (img.closest('.instagrab-ignore') || img.closest('.instagrab-card-bar')) return false;
+      if (img.closest('[class*="carousel" i], [class*="similar" i], [class*="related" i], [class*="more-from" i], div.showcase__item')) return false;
+
+      const rect = img.getBoundingClientRect();
+      const naturalW = img.naturalWidth || 0;
+      const naturalH = img.naturalHeight || 0;
+      return (rect.width >= 220 && rect.height >= 220) || (naturalW >= 300 && naturalH >= 300);
+    });
+
+    if (imgs.length === 0) return;
+
+    imgs.sort((a, b) => {
+      const rA = a.getBoundingClientRect();
+      const rB = b.getBoundingClientRect();
+      return (rB.width * rB.height) - (rA.width * rA.height);
+    });
+
+    const mainImg = imgs[0];
+    const mainSrc = mainImg.currentSrc || mainImg.src || '';
+    if (!mainSrc) return;
+
+    const fullImgUrl = getMagnificFullImageUrl(mainImg, mainSrc);
+    const titleEl = document.querySelector('h1') || document.querySelector('[class*="title" i], [data-cy*="title" i]');
+    const rawTitle = (titleEl?.textContent || mainImg.alt || document.title || 'Freepik Media').trim();
+    const cleanTitle = rawTitle.replace(/[<>:"/\\|?*]/g, '_').slice(0, 80) || 'Freepik_Image';
+    const filename = `${cleanTitle}.png`;
+
+    // A. Inject Floating Pill Bar in Top-Right Corner of the Expanded Image Card
+    const imgContainer = mainImg.closest('div[class*="preview" i], div[class*="card" i], div[class*="image" i], div[class*="modal" i], div[class*="dialog" i], figure') || mainImg.parentElement;
+    if (imgContainer) {
+      if (window.getComputedStyle(imgContainer).position === 'static') {
+        imgContainer.style.position = 'relative';
+      }
+
+      if (!imgContainer.querySelector('.instagrab-expanded-overlay-bar') || imgContainer.dataset.instagrabMediaKey !== mainSrc) {
+        imgContainer.dataset.instagrabMediaKey = mainSrc;
+        const oldBar = imgContainer.querySelector('.instagrab-expanded-overlay-bar');
+        if (oldBar) oldBar.remove();
+
+        const floatBar = document.createElement('div');
+        floatBar.className = 'instagrab-expanded-overlay-bar';
+
+        const dlBtn = document.createElement('button');
+        dlBtn.type = 'button';
+        dlBtn.className = 'instagrab-magnific-detail-btn';
+        dlBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download HD</span>`;
+        dlBtn.title = 'Download Full Resolution HD Image (PNG)';
+        dlBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          downloadImageDirectly(fullImgUrl, filename, dlBtn, 'Full HD Image');
+        });
+        floatBar.appendChild(dlBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'instagrab-magnific-detail-btn secondary';
+        copyBtn.innerHTML = `${COPY_ICON} <span>Copy PNG</span>`;
+        copyBtn.title = 'Copy crisp transparent PNG to clipboard';
+        copyBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          copyImageAsPngToClipboard(fullImgUrl, copyBtn);
+        });
+        floatBar.appendChild(copyBtn);
+
+        imgContainer.appendChild(floatBar);
+      }
+    }
+
+    // B. Inject Action Buttons near "Remove background", "Resize", "Variations" row
+    const actionButtons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
+    const rmBgBtn = actionButtons.find(b => {
+      const txt = (b.textContent || '').trim().toLowerCase();
+      return (txt.includes('remove background') || txt.includes('variations') || txt.includes('resize')) && !b.classList.contains('instagrab-magnific-row-btn');
+    });
+
+    if (rmBgBtn && rmBgBtn.parentElement && !rmBgBtn.parentElement.querySelector('.instagrab-magnific-row-btn')) {
+      const rowContainer = rmBgBtn.parentElement;
+
+      const dlRowBtn = document.createElement('button');
+      dlRowBtn.type = 'button';
+      dlRowBtn.className = 'instagrab-magnific-row-btn';
+      dlRowBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download HD</span>`;
+      dlRowBtn.title = 'Download Full Resolution Image';
+      dlRowBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        downloadImageDirectly(fullImgUrl, filename, dlRowBtn, 'Full HD Image');
+      });
+
+      const copyRowBtn = document.createElement('button');
+      copyRowBtn.type = 'button';
+      copyRowBtn.className = 'instagrab-magnific-row-btn secondary';
+      copyRowBtn.innerHTML = `${COPY_ICON} <span>Copy PNG</span>`;
+      copyRowBtn.title = 'Copy to Clipboard as PNG';
+      copyRowBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        copyImageAsPngToClipboard(fullImgUrl, copyRowBtn);
+      });
+
+      rowContainer.appendChild(dlRowBtn);
+      rowContainer.appendChild(copyRowBtn);
+    }
+
+    // C. Inject Buttons in the Right Sidebar (near "Get Premium" or author)
+    const premiumBtn = actionButtons.find(b => {
+      const txt = (b.textContent || '').trim().toLowerCase();
+      return (txt.includes('get premium') || txt === 'download' || txt.startsWith('download ')) &&
+             !b.classList.contains('instagrab-magnific-detail-btn') &&
+             !b.classList.contains('instagrab-magnific-sidebar-btn');
+    });
+
+    if (premiumBtn && premiumBtn.parentElement && !premiumBtn.parentElement.querySelector('.instagrab-magnific-sidebar-bar')) {
+      const sideContainer = premiumBtn.parentElement;
+      const sideBar = document.createElement('div');
+      sideBar.className = 'instagrab-magnific-sidebar-bar';
+
+      const sideDlBtn = document.createElement('button');
+      sideDlBtn.type = 'button';
+      sideDlBtn.className = 'instagrab-magnific-sidebar-btn';
+      sideDlBtn.innerHTML = `${DOWNLOAD_ICON} <span>Download Full Size (HD)</span>`;
+      sideDlBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        downloadImageDirectly(fullImgUrl, filename, sideDlBtn, 'Full Size HD');
+      });
+      sideBar.appendChild(sideDlBtn);
+
+      const sideCopyBtn = document.createElement('button');
+      sideCopyBtn.type = 'button';
+      sideCopyBtn.className = 'instagrab-magnific-sidebar-btn secondary';
+      sideCopyBtn.innerHTML = `${COPY_ICON} <span>Copy as PNG</span>`;
+      sideCopyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        copyImageAsPngToClipboard(fullImgUrl, sideCopyBtn);
+      });
+      sideBar.appendChild(sideCopyBtn);
+
+      sideContainer.insertBefore(sideBar, premiumBtn.nextSibling);
+    }
+  }
+
   function scanMagnific() {
+    scanMagnificExpandedView();
     const path = window.location.pathname.replace(/\/+$/, '');
     const isSingleItemPage = (
       path.endsWith('.htm') ||
@@ -1371,14 +1593,8 @@
             dlBtn.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
-              const targetUrl = buildMagnificActionUrl({
-                pageUrl: window.location.href,
-                mediaUrl: fullImgUrl,
-                mode: 'full',
-                type: isIconItem ? 'icon' : 'image',
-                title: titleText
-              });
-              downloadMedia(targetUrl, dlBtn, 'Full Size HD', { quality: 'best' });
+              const safeName = `${titleText.replace(/[<>:"/\\|?*]/g, '_').slice(0, 80)}.png`;
+              downloadImageDirectly(fullImgUrl, safeName, dlBtn, isIconItem ? 'Icon PNG' : 'Full Size HD');
             });
             bar.appendChild(dlBtn);
 
@@ -1530,14 +1746,8 @@
           e.stopPropagation();
           const currentImg = card.querySelector('img');
           const previewSrc = (currentImg && (currentImg.currentSrc || currentImg.src)) || imgSrc;
-          const targetUrl = buildMagnificActionUrl({
-            pageUrl: itemPageUrl,
-            mediaUrl: previewSrc,
-            mode: 'preview',
-            type: 'image',
-            title: cardTitle
-          });
-          downloadMedia(targetUrl, prevBtn, 'Preview Image', { quality: '720p' });
+          const safeName = `${cardTitle.replace(/[<>:"/\\|?*]/g, '_').slice(0, 60)}_preview.png`;
+          downloadImageDirectly(previewSrc, safeName, prevBtn, 'Preview Image');
         });
         bar.appendChild(prevBtn);
 
@@ -1906,32 +2116,13 @@
           pngBlob = await new Promise((resolve) => {
             cutoutInfo.element.toBlob(resolve, 'image/png');
           });
-        } catch (cErr) {
-          console.warn('[InstaGrab] Canvas toBlob error:', cErr);
-        }
+        } catch (_) {}
       }
 
-      // 2. Try drawing img element to offscreen canvas
-      if (!pngBlob && cutoutInfo && cutoutInfo.type === 'img' && cutoutInfo.element) {
-        const img = cutoutInfo.element;
-        try {
-          const off = document.createElement('canvas');
-          const w = img.naturalWidth || img.width || 800;
-          const h = img.naturalHeight || img.height || 800;
-          off.width = w;
-          off.height = h;
-          const ctx = off.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          pngBlob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
-        } catch (drawErr) {
-          console.warn('[InstaGrab] Offscreen canvas drawImage error:', drawErr);
-        }
-      }
-
-      // 3. Try fetching URL (blob:, data:, or https:)
+      // 2. Directly fetch blob: or data: URL without canvas tainting
       let targetUrl = (cutoutInfo && cutoutInfo.url) || (cutoutInfo && cutoutInfo.element && (cutoutInfo.element.currentSrc || cutoutInfo.element.src));
-      if (!pngBlob && targetUrl) {
-        if (targetUrl.startsWith('blob:') || targetUrl.startsWith('data:')) {
+      if (!pngBlob && targetUrl && (targetUrl.startsWith('blob:') || targetUrl.startsWith('data:'))) {
+        try {
           const res = await fetch(targetUrl);
           const rawBlob = await res.blob();
           if (rawBlob.type === 'image/png') {
@@ -1945,8 +2136,12 @@
             ctx.drawImage(bmp, 0, 0);
             pngBlob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
           }
-        } else {
-          // Use background worker to fetch & convert to PNG DataURL
+        } catch (_) {}
+      }
+
+      // 3. If http(s): URL, fetch via background worker to bypass CORS entirely
+      if (!pngBlob && targetUrl && targetUrl.startsWith('http')) {
+        try {
           const dataUrl = await new Promise((resolve, reject) => {
             chrome.runtime.sendMessage({ action: 'fetchPngDataUrl', url: targetUrl }, (res) => {
               if (chrome.runtime.lastError || !res || !res.success || !res.dataUrl) {
@@ -1958,6 +2153,23 @@
           });
           const res = await fetch(dataUrl);
           pngBlob = await res.blob();
+        } catch (_) {}
+      }
+
+      // 4. Fallback: Draw to offscreen canvas only if image is complete and same-origin/safe
+      if (!pngBlob && cutoutInfo && cutoutInfo.type === 'img' && cutoutInfo.element) {
+        const img = cutoutInfo.element;
+        if (img.complete && (img.naturalWidth || img.width)) {
+          try {
+            const off = document.createElement('canvas');
+            const w = img.naturalWidth || img.width || 800;
+            const h = img.naturalHeight || img.height || 800;
+            off.width = w;
+            off.height = h;
+            const ctx = off.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            pngBlob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
+          } catch (_) {}
         }
       }
 
@@ -2022,7 +2234,188 @@
     }
   }
 
+  // Handle pasting image from clipboard directly into Canva
+  async function handleCanvaPaste(container, button) {
+    if (button && button.classList.contains('instagrab-loading')) return;
+    const origHtml = button ? button.innerHTML : '';
+    if (button) {
+      button.classList.add('instagrab-loading');
+      button.innerHTML = `${SPINNER_ICON} <span>Pasting...</span>`;
+    }
+
+    const restore = (isSuccess, msg) => {
+      if (button) {
+        button.classList.remove('instagrab-loading');
+        if (isSuccess) {
+          button.classList.add('instagrab-success');
+          button.innerHTML = `${CHECK_ICON} <span>Pasted!</span>`;
+          setTimeout(() => {
+            button.classList.remove('instagrab-success');
+            button.innerHTML = origHtml;
+          }, 2500);
+        } else {
+          button.innerHTML = origHtml;
+        }
+      }
+      if (msg) {
+        updateToast({
+          message: msg,
+          isError: !isSuccess,
+          state: isSuccess ? 'complete' : 'error',
+          progress: isSuccess ? 100 : 0
+        });
+      }
+    };
+
+    try {
+      updateToast({
+        message: 'Reading image from clipboard...',
+        progress: 30,
+        state: 'processing'
+      });
+
+      let imageBlob = null;
+
+      // 1. Read from Async Clipboard API
+      if (navigator.clipboard && navigator.clipboard.read) {
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const imgType = item.types.find(t => t.startsWith('image/'));
+            if (imgType) {
+              imageBlob = await item.getType(imgType);
+              break;
+            }
+          }
+        } catch (clipErr) {
+          console.warn('[InstaGrab] navigator.clipboard.read warning:', clipErr);
+        }
+      }
+
+      if (!imageBlob) {
+        restore(false, '⚠️ No image found in clipboard! Copy an image first, then click Paste.');
+        return;
+      }
+
+      const ext = imageBlob.type === 'image/jpeg' ? 'jpg' : (imageBlob.type === 'image/webp' ? 'webp' : 'png');
+      const file = new File([imageBlob], `pasted_image_${Date.now()}.${ext}`, {
+        type: imageBlob.type || 'image/png',
+        lastModified: Date.now()
+      });
+
+      const dt = new DataTransfer();
+      dt.items.add(file);
+
+      // Method A: Feed directly to Canva input[type="file"]
+      const fileInput = container.querySelector('input[type="file"]') || document.querySelector('input[type="file"]');
+      if (fileInput) {
+        try {
+          fileInput.files = dt.files;
+        } catch (_) {
+          Object.defineProperty(fileInput, 'files', {
+            value: dt.files,
+            writable: true
+          });
+        }
+        fileInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        fileInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      }
+
+      // Method B: Dispatch synthetic Drag & Drop event on dropzone
+      const dropZone = container.querySelector('div[class*="drop" i], div[class*="upload" i], [role="presentation"]') || container;
+      if (dropZone) {
+        const dropEvent = new DragEvent('drop', {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: dt
+        });
+        dropZone.dispatchEvent(dropEvent);
+      }
+
+      // Method C: Dispatch synthetic Paste event on document and dropzone
+      const pasteEvent = new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt
+      });
+      (dropZone || document.activeElement || document.body).dispatchEvent(pasteEvent);
+
+      restore(true, '✓ Image pasted into Canva background remover!');
+
+    } catch (err) {
+      console.error('[InstaGrab] Paste error:', err);
+      restore(false, '⚠️ Failed to paste image: ' + (err.message || 'Permission denied'));
+    }
+  }
+
+  // Inject "Paste Image" button into Canva's background remover & upload interfaces
+  function scanCanvaUploadInterfaces() {
+    // 1. Look for upload / select buttons: "Select image", "Upload image", "Choose image", "Choose file"
+    const allButtons = Array.from(document.querySelectorAll('button, label, div[role="button"]'));
+    const selectButtons = allButtons.filter(b => {
+      if (b.classList.contains('instagrab-ignore') || b.classList.contains('instagrab-canva-paste-btn')) return false;
+      const txt = (b.textContent || '').trim().toLowerCase();
+      return (
+        txt === 'select image' ||
+        txt.includes('select image') ||
+        txt.includes('upload image') ||
+        txt.includes('choose image') ||
+        txt.includes('choose file') ||
+        txt.includes('select files')
+      );
+    });
+
+    selectButtons.forEach(selBtn => {
+      const parent = selBtn.parentElement;
+      if (!parent || parent.querySelector('.instagrab-canva-paste-btn')) return;
+
+      const container = selBtn.closest('[role="dialog"]') ||
+                        selBtn.closest('div[class*="modal" i]') ||
+                        selBtn.closest('div[class*="drop" i]') ||
+                        selBtn.closest('div[class*="upload" i]') ||
+                        selBtn.closest('section') ||
+                        parent;
+
+      const pasteBtn = document.createElement('button');
+      pasteBtn.type = 'button';
+      pasteBtn.className = 'instagrab-canva-paste-btn';
+      pasteBtn.innerHTML = `${PASTE_ICON} <span>Paste Image</span>`;
+      pasteBtn.title = 'Paste copied image directly from clipboard (or press Ctrl+V)';
+
+      pasteBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await handleCanvaPaste(container, pasteBtn);
+      });
+
+      if (selBtn.nextSibling) {
+        parent.insertBefore(pasteBtn, selBtn.nextSibling);
+      } else {
+        parent.appendChild(pasteBtn);
+      }
+    });
+
+    // 2. Also look for dashed drop zones containing "Drop image here" or "Drop files here"
+    const dropAreas = Array.from(document.querySelectorAll('div, section, form')).filter(el => {
+      if (el.dataset.instagrabPasteBound) return false;
+      const txt = (el.innerText || '').toLowerCase();
+      return (txt.includes('drop image here') || txt.includes('drag and drop any image') || txt.includes('drop your image')) && el.querySelector('input[type="file"]');
+    });
+
+    dropAreas.forEach(dropZone => {
+      dropZone.dataset.instagrabPasteBound = 'true';
+      dropZone.addEventListener('paste', async (e) => {
+        if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+          return;
+        }
+        e.preventDefault();
+        await handleCanvaPaste(dropZone, null);
+      });
+    });
+  }
+
   function scanCanva() {
+    scanCanvaUploadInterfaces();
     // 1. Search for Canva's "Download" buttons on the background remover tool / modal
     const allButtons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
     const dlButtons = allButtons.filter(b => {
@@ -2203,6 +2596,20 @@
     scanAll();
   }
 
+
+  // Global Ctrl+V / Cmd+V keyboard shortcut for Canva background remover upload
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || document.activeElement?.isContentEditable) {
+        return;
+      }
+      const canvaModal = document.querySelector('[role="dialog"], div[class*="modal" i], div[class*="drop" i]');
+      if (canvaModal && (canvaModal.innerText || '').toLowerCase().includes('remove background')) {
+        handleCanvaPaste(canvaModal, canvaModal.querySelector('.instagrab-canva-paste-btn'));
+      }
+    }
+  });
 
   console.log('[InstaGrab] Universal media downloader & copy active (Pinterest, YouTube, Instagram, Spotify, Magnific, Flaticon, Canva, Envato & Epidemic Sound)');
 })();
