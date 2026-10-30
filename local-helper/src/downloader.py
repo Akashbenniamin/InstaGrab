@@ -493,11 +493,14 @@ class Downloader:
 
         # If a direct media URL was captured from the user's browser, download it directly (bypasses anonymous rate limits on Instagram)
         if direct_media_url and platform == 'instagram':
-            try:
-                if self._download_direct_media(url, direct_media_url, download_id, base_path, format_type=format_type, platform=platform):
-                    return
-            except Exception as direct_err:
-                logging.warning(f"Direct media stream download failed ({direct_err}), falling back to standard extraction.")
+            lower_direct = direct_media_url.lower()
+            is_audio_stream = ('mime_type=audio' in lower_direct or 'audio_mp4' in lower_direct or '/t60/f2/m69' in lower_direct)
+            if not (format_type == 'video' and is_audio_stream):
+                try:
+                    if self._download_direct_media(url, direct_media_url, download_id, base_path, format_type=format_type, platform=platform):
+                        return
+                except Exception as direct_err:
+                    logging.warning(f"Direct media stream download failed ({direct_err}), falling back to standard extraction.")
 
         # If a specific carousel item index was explicitly requested, download it directly via native extractor
         if platform == 'instagram' and item_index is not None:
@@ -1423,6 +1426,42 @@ class Downloader:
 
         final_filepath = temp_file
         ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
+
+        # If format is video, verify that the downloaded MP4 actually contains a valid video track
+        if format_type == 'video' and ext == '.mp4':
+            ffprobe_bin = 'ffprobe'
+            if ffmpeg_dir:
+                cand = os.path.join(ffmpeg_dir, 'ffprobe.exe')
+                if os.path.exists(cand):
+                    ffprobe_bin = cand
+            si = None
+            creationflags = 0
+            if sys.platform == 'win32':
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0
+                creationflags = subprocess.CREATE_NO_WINDOW
+            try:
+                probe_cmd = [ffprobe_bin, '-v', 'error', '-show_entries', 'stream=codec_type,width,height', '-of', 'json', temp_file]
+                probe_res = subprocess.check_output(probe_cmd, startupinfo=si, creationflags=creationflags, timeout=15)
+                probe_data = json.loads(probe_res.decode('utf-8'))
+                streams = probe_data.get('streams', [])
+                has_video = any(s.get('codec_type') == 'video' and (s.get('width') or 0) > 0 for s in streams)
+                file_sz = os.path.getsize(temp_file)
+                if not has_video or file_sz < 350 * 1024:
+                    logging.warning(f"Direct media download for {url} has no video track or is too small (has_video={has_video}, size={file_sz}B). Discarding partial file and falling back to standard engine.")
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
+                    return False
+            except Exception as probe_err:
+                logging.warning(f"Failed to probe direct media file: {probe_err}")
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+                return False
 
         if format_type == 'audio' and ext == '.mp4':
             self.progress_store.update(download_id, state='processing', progress=92.0, speed='Extracting MP3 audio...', filename=f"{base_filename}.mp3")

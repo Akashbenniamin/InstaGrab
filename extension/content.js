@@ -165,23 +165,10 @@
         }
       }
 
-      // 2. If video element uses MediaSource blob: or DASH, inspect performance resource timing for CDN MP4
-      if (typeof performance !== 'undefined' && performance.getEntriesByType) {
-        const resources = performance.getEntriesByType('resource');
-        for (let i = resources.length - 1; i >= 0; i--) {
-          const rName = resources[i].name;
-          if (rName && rName.includes('cdninstagram.com') && (rName.includes('.mp4') || rName.includes('/v/t60.') || rName.includes('mime_type=video_mp4'))) {
-            try {
-              const uObj = new URL(rName);
-              uObj.searchParams.delete('bytestart');
-              uObj.searchParams.delete('byteend');
-              return uObj.href;
-            } catch (_) {
-              return rName;
-            }
-          }
-        }
-      }
+      // 2. Note: For video elements using MediaSource (blob:) or DASH, Instagram separates audio and
+      // video into separate network streams. Never return arbitrary DASH stream fragments from performance
+      // entries, as doing so downloads audio-only (e.g. 265 KB) or silent video chunks. Instead, return null
+      // so the desktop helper engine can properly extract and mux both full video & audio streams.
 
       // 3. Inspect high-res <img> elements in container for photos / carousels
       const imgs = Array.from(scope.querySelectorAll('img[src*="cdninstagram.com"], img[srcset*="cdninstagram.com"]'));

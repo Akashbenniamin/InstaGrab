@@ -46,7 +46,7 @@ function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [detectedMediaType, setDetectedMediaType] = useState<string | undefined>(undefined);
   const [carouselMedia, setCarouselMedia] = useState<CarouselMediaItem[] | null>(null);
-  const [detectedPlayableUrl, setDetectedPlayableUrl] = useState<string | null>(null);
+  const [detectedPlayable, setDetectedPlayable] = useState<{ forUrl: string; playableUrl: string } | null>(null);
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -113,10 +113,10 @@ function App() {
   const handleUrlChange = (value: string) => {
     setUrl(value);
     setUrlError('');
+    setDetectedPlayable(null);
     if (!value.trim()) {
       setDetectedMediaType(undefined);
       setCarouselMedia(null);
-      setDetectedPlayableUrl(null);
     } else {
       const val = validateMediaUrl(value.trim());
       if (val.valid) {
@@ -129,7 +129,6 @@ function App() {
       } else {
         setDetectedMediaType(undefined);
         setCarouselMedia(null);
-        setDetectedPlayableUrl(null);
       }
     }
   };
@@ -159,9 +158,24 @@ function App() {
     const targetUrl = normalized!;
     const effectiveFormat: FormatType = (platform === 'envato' || platform === 'epidemic' || platform === 'spotify') ? 'audio' : formatType;
     const quality = effectiveFormat === 'video' ? videoQuality : audioQuality;
+
+    const extractShortcode = (u: string) => {
+      const m = u.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+      return m ? m[1] : null;
+    };
+    const targetSc = extractShortcode(targetUrl);
+    const playableSc = detectedPlayable?.forUrl ? extractShortcode(detectedPlayable.forUrl) : null;
+    const isDirectMatch = Boolean(
+      platform === 'instagram' &&
+      detectedPlayable &&
+      detectedPlayable.playableUrl &&
+      ((targetSc && playableSc && targetSc === playableSc) ||
+       (targetUrl === detectedPlayable.forUrl))
+    );
+
     const downloadOptions = {
       ...(options || (detectedMediaType === 'carousel' ? { asZip: true } : {})),
-      directMediaUrl: platform === 'instagram' ? (detectedPlayableUrl || undefined) : undefined,
+      directMediaUrl: isDirectMatch ? detectedPlayable!.playableUrl : undefined,
     };
 
     await startDownload(targetUrl, effectiveFormat, quality, downloadOptions);
@@ -180,6 +194,7 @@ function App() {
   };
 
   const handlePasteText = (pastedText: string) => {
+    setDetectedPlayable(null);
     if (!quickMode) return;
     const { valid } = validateMediaUrl(pastedText);
     if (valid) {
@@ -308,15 +323,17 @@ function App() {
                   <div className="md:col-span-5 flex flex-col">
                     <MediaPreview 
                       url={url} 
-                      onMediaDetected={({ mediaType, carouselMedia: detectedCarousel, playableUrl }) => {
+                      onMediaDetected={({ mediaType, carouselMedia: detectedCarousel, playableUrl, resolvedUrl }) => {
                         if (mediaType) setDetectedMediaType(mediaType);
                         if (detectedCarousel && detectedCarousel.length > 0) {
                           setCarouselMedia(detectedCarousel);
                         } else {
                           setCarouselMedia(null);
                         }
-                        if (playableUrl) {
-                          setDetectedPlayableUrl(playableUrl);
+                        if (playableUrl && resolvedUrl) {
+                          setDetectedPlayable({ forUrl: resolvedUrl, playableUrl });
+                        } else {
+                          setDetectedPlayable(null);
                         }
                       }}
                     />

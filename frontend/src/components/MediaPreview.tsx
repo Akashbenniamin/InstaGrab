@@ -6,13 +6,14 @@ import { CarouselMediaItem } from '../types';
 
 interface Props {
   url: string;
-  onMediaDetected?: (info: { 
-    mediaType?: string; 
-    contentType?: string; 
+  onMediaDetected?: (info: {
+    mediaType?: string;
+    contentType?: string;
     title?: string;
-    carouselMedia?: CarouselMediaItem[];
+    carouselMedia?: CarouselMediaItem[] | null;
     itemCount?: number;
     playableUrl?: string | null;
+    resolvedUrl?: string | null;
   }) => void;
 }
 
@@ -71,6 +72,9 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
       setInfo(null);
       setYtId(null);
       setDetectedContentType(undefined);
+      if (onMediaDetected) {
+        onMediaDetected({ playableUrl: null, carouselMedia: null, resolvedUrl: null });
+      }
       return;
     }
 
@@ -79,6 +83,9 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
       setInfo(null);
       setYtId(null);
       setDetectedContentType(undefined);
+      if (onMediaDetected) {
+        onMediaDetected({ playableUrl: null, carouselMedia: null, resolvedUrl: null });
+      }
       return;
     }
 
@@ -86,7 +93,10 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
     if (onMediaDetected) {
       onMediaDetected({
         contentType: val.contentType,
-        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : (val.contentType === 'audio' ? 'audio' : (val.contentType === 'carousel' ? 'carousel' : (val.contentType === 'photo' ? 'photo' : undefined)))))
+        mediaType: val.contentType === 'story' ? 'story' : (val.contentType === 'highlight' ? 'highlight' : (val.contentType === 'reel' ? 'reel' : (val.contentType === 'audio' ? 'audio' : (val.contentType === 'carousel' ? 'carousel' : (val.contentType === 'photo' ? 'photo' : undefined))))),
+        playableUrl: null,
+        carouselMedia: null,
+        resolvedUrl: null
       });
     }
 
@@ -152,7 +162,8 @@ export const MediaPreview: React.FC<Props> = ({ url, onMediaDetected }) => {
             title: res.title,
             carouselMedia: res.carousel_media,
             itemCount: res.item_count,
-            playableUrl: res.playable_url
+            playableUrl: res.playable_url,
+            resolvedUrl: trimmed
           });
         }
       }
