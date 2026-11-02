@@ -495,7 +495,13 @@ class Downloader:
         if direct_media_url and platform == 'instagram':
             lower_direct = direct_media_url.lower()
             is_audio_stream = ('mime_type=audio' in lower_direct or 'audio_mp4' in lower_direct or '/t60/f2/m69' in lower_direct)
-            if not (format_type == 'video' and is_audio_stream):
+            is_image_url = any(ext in lower_direct for ext in ['.jpg', '.jpeg', '.png', '.webp'])
+            if format_type == 'video' and (is_audio_stream or is_image_url):
+                direct_media_url = None
+            elif format_type == 'audio' and is_image_url:
+                direct_media_url = None
+
+            if direct_media_url:
                 try:
                     if self._download_direct_media(url, direct_media_url, download_id, base_path, format_type=format_type, platform=platform):
                         return
@@ -1428,7 +1434,15 @@ class Downloader:
         ffmpeg_dir = get_ffmpeg_dir() or ensure_ffmpeg()
 
         # If format is video, verify that the downloaded MP4 actually contains a valid video track
-        if format_type == 'video' and ext == '.mp4':
+        if format_type == 'video':
+            if ext != '.mp4':
+                logging.warning(f"Direct media download for {url} has non-video extension {ext}. Discarding partial file and falling back to standard engine.")
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+                return False
+
             ffprobe_bin = 'ffprobe'
             if ffmpeg_dir:
                 cand = os.path.join(ffmpeg_dir, 'ffprobe.exe')
@@ -1448,7 +1462,7 @@ class Downloader:
                 streams = probe_data.get('streams', [])
                 has_video = any(s.get('codec_type') == 'video' and (s.get('width') or 0) > 0 for s in streams)
                 file_sz = os.path.getsize(temp_file)
-                if not has_video or file_sz < 350 * 1024:
+                if not has_video or file_sz < 100 * 1024:
                     logging.warning(f"Direct media download for {url} has no video track or is too small (has_video={has_video}, size={file_sz}B). Discarding partial file and falling back to standard engine.")
                     try:
                         os.remove(temp_file)
@@ -1463,7 +1477,15 @@ class Downloader:
                     pass
                 return False
 
-        if format_type == 'audio' and ext == '.mp4':
+        if format_type == 'audio':
+            if ext != '.mp4':
+                logging.warning(f"Direct media file {temp_file} has extension {ext}, cannot extract audio. Discarding and falling back.")
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+                return False
+
             self.progress_store.update(download_id, state='processing', progress=92.0, speed='Extracting MP3 audio...', filename=f"{base_filename}.mp3")
             mp3_path = os.path.join(job_temp_dir, f"{base_filename}.mp3")
             ffmpeg_bin = os.path.join(ffmpeg_dir, 'ffmpeg.exe') if ffmpeg_dir and os.path.exists(os.path.join(ffmpeg_dir, 'ffmpeg.exe')) else 'ffmpeg'
@@ -1472,10 +1494,25 @@ class Downloader:
             if sys.platform == 'win32':
                 si = subprocess.STARTUPINFO()
                 si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            subprocess.run(cmd, startupinfo=si, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0, check=True, capture_output=True)
-            if os.path.exists(mp3_path):
-                final_filepath = mp3_path
-                ext = '.mp3'
+            try:
+                res = subprocess.run(cmd, startupinfo=si, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0, capture_output=True)
+                if res.returncode == 0 and os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1024:
+                    final_filepath = mp3_path
+                    ext = '.mp3'
+                else:
+                    logging.warning(f"ffmpeg failed to extract valid MP3 audio from {temp_file}. Discarding and falling back.")
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
+                    return False
+            except Exception as extract_err:
+                logging.warning(f"Audio extraction error: {extract_err}. Discarding and falling back.")
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+                return False
         elif ext == '.mp4':
             self.progress_store.update(download_id, state='processing', progress=92.0, speed='Optimizing MP4 compatibility...', filename=f"{base_filename}.mp4")
             final_filepath = self._ensure_h264_compatible(final_filepath, ffmpeg_dir, platform=platform, download_id=download_id)

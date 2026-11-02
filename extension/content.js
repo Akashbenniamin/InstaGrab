@@ -140,10 +140,84 @@
     clearTimeout(activeToastTimeout);
   }
 
+  // Resolve the canonical, exact Instagram Post or Reel URL
+  function getInstagramPostUrl(container = null, clickedElement = null) {
+    try {
+      const path = window.location.pathname;
+
+      // 1. If currently on a direct reel/post page (e.g. /reel/Deb4rV9pCfD/ or /p/XYZ/)
+      // and the clicked button is on the main post (NOT inside a "More posts from..." grid)
+      const directMatch = path.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+      if (directMatch) {
+        const isMorePosts = clickedElement && clickedElement.closest('[data-testid="user-posts"], [aria-label*="More posts"]');
+        if (!isMorePosts) {
+          const type = path.includes('reel') ? 'reel' : (path.includes('tv') ? 'tv' : 'p');
+          return `https://www.instagram.com/${type}/${directMatch[1]}/`;
+        }
+      }
+
+      // 2. Check open modal/dialog first
+      const dialog = (clickedElement && clickedElement.closest('div[role="dialog"]')) || document.querySelector('div[role="dialog"]');
+      if (dialog) {
+        // Timestamp permalink is the official link to the modal post
+        const timeLink = dialog.querySelector('a:has(time), a > time, time')?.closest('a');
+        if (timeLink && timeLink.getAttribute('href')) {
+          const href = timeLink.getAttribute('href');
+          const m = href.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+          if (m) {
+            const type = href.includes('reel') ? 'reel' : 'p';
+            return `https://www.instagram.com/${type}/${m[1]}/`;
+          }
+        }
+        if (directMatch) {
+          const type = path.includes('reel') ? 'reel' : 'p';
+          return `https://www.instagram.com/${type}/${directMatch[1]}/`;
+        }
+      }
+
+      // 3. If inside a specific container (e.g. home feed article)
+      const scope = container || (clickedElement ? (clickedElement.closest('article') || clickedElement.closest('section') || clickedElement.closest('div[role="dialog"]')) : null);
+      if (scope) {
+        // Look for timestamp permalink first
+        const timeLink = scope.querySelector('a:has(time), a > time, time')?.closest('a');
+        if (timeLink && timeLink.getAttribute('href')) {
+          const href = timeLink.getAttribute('href');
+          const m = href.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+          if (m) {
+            const type = href.includes('reel') ? 'reel' : 'p';
+            return `https://www.instagram.com/${type}/${m[1]}/`;
+          }
+        }
+
+        // Canonical post links that are NOT inside "More posts" recommendations
+        const links = Array.from(scope.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]'));
+        for (const l of links) {
+          const href = l.getAttribute('href') || '';
+          const m = href.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
+          if (m && !l.closest('[aria-label*="More posts"]')) {
+            const type = href.includes('reel') ? 'reel' : 'p';
+            return `https://www.instagram.com/${type}/${m[1]}/`;
+          }
+        }
+      }
+
+      // 4. Fallback to direct page URL
+      if (directMatch) {
+        const type = path.includes('reel') ? 'reel' : 'p';
+        return `https://www.instagram.com/${type}/${directMatch[1]}/`;
+      }
+      return window.location.href;
+    } catch (e) {
+      console.warn('[InstaGrab] getInstagramPostUrl error:', e);
+      return window.location.href;
+    }
+  }
+
   // Extract direct playable CDN stream/image URL from Instagram DOM / performance resources
   function findInstagramMediaUrl(container = null) {
     try {
-      const scope = container || document;
+      if (!container) return null; // Never scan entire document indiscriminately!
+      const scope = container;
 
       // 1. Direct active or visible <video> element
       const videos = Array.from(scope.querySelectorAll('video'));
@@ -163,16 +237,16 @@
         if (source && source.src && source.src.startsWith('http') && source.src.includes('cdninstagram.com')) {
           return source.src;
         }
+        // If a video exists in this container, it is a video post!
+        // NEVER fall back to <img> elements because on video reels/posts,
+        // any <img> elements in the container or page are thumbnails or "More posts" images!
+        // Returning an <img> URL when downloading a video causes the wrong image/audio to be downloaded!
+        return null;
       }
 
-      // 2. Note: For video elements using MediaSource (blob:) or DASH, Instagram separates audio and
-      // video into separate network streams. Never return arbitrary DASH stream fragments from performance
-      // entries, as doing so downloads audio-only (e.g. 265 KB) or silent video chunks. Instead, return null
-      // so the desktop helper engine can properly extract and mux both full video & audio streams.
-
-      // 3. Inspect high-res <img> elements in container for photos / carousels
+      // 2. Pure photo/carousel post (only when NO video elements exist in container)
       const imgs = Array.from(scope.querySelectorAll('img[src*="cdninstagram.com"], img[srcset*="cdninstagram.com"]'));
-      let targetImg = imgs.find(img => img.offsetWidth > 200 && img.offsetHeight > 200);
+      let targetImg = imgs.find(img => img.offsetWidth > 200 && img.offsetHeight > 200 && !img.closest('[aria-label*="More posts"]'));
       if (targetImg) {
         if (targetImg.srcset) {
           const parts = targetImg.srcset.split(',').map(s => s.trim().split(/\s+/));
@@ -223,58 +297,11 @@
 
     // 3. Instagram
     if (host.includes('instagram.com')) {
-      const directMediaUrl = findInstagramMediaUrl();
+      const targetUrl = getInstagramPostUrl();
+      const activeContainer = document.querySelector('div[role="dialog"]') || document.querySelector('article') || document.querySelector('section');
+      const directMediaUrl = findInstagramMediaUrl(activeContainer);
 
-      // Stories & Highlights
-      if (path.includes('/stories/') || path.startsWith('/s/')) {
-        return { url: window.location.href, platform: 'instagram', direct_media_url: directMediaUrl };
-      }
-
-      // Direct post/reel URL
-      const directMatch = path.match(/\/(?:p|reel|reels|tv|share\/reel|share\/p)\/([A-Za-z0-9_-]+)/);
-      if (directMatch) {
-        const type = path.includes('reel') ? 'reel' : (path.includes('tv') ? 'tv' : 'p');
-        return { url: `https://www.instagram.com/${type}/${directMatch[1]}/`, platform: 'instagram', direct_media_url: directMediaUrl };
-      }
-
-      // Check open modal/dialog
-      const dialog = document.querySelector('div[role="dialog"]');
-      if (dialog) {
-        const link = dialog.querySelector('a[href*="/reel/"], a[href*="/p/"]');
-        if (link) {
-          const href = link.getAttribute('href');
-          if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram', direct_media_url: findInstagramMediaUrl(dialog) || directMediaUrl };
-        }
-      }
-
-      // Check active playing video or video closest to screen center
-      const videos = Array.from(document.querySelectorAll('video'));
-      let targetVideo = videos.find(v => !v.paused && v.offsetWidth > 120);
-      if (!targetVideo && videos.length > 0) {
-        const vh = window.innerHeight;
-        let minDiff = Infinity;
-        videos.forEach(v => {
-          const rect = v.getBoundingClientRect();
-          if (rect.height > 100 && rect.bottom > 0 && rect.top < vh) {
-            const diff = Math.abs((rect.top + rect.bottom) / 2 - vh / 2);
-            if (diff < minDiff) {
-              minDiff = diff;
-              targetVideo = v;
-            }
-          }
-        });
-      }
-
-      if (targetVideo) {
-        const container = targetVideo.closest('article') || targetVideo.closest('div[role="dialog"]') || targetVideo.closest('section') || targetVideo.parentElement?.parentElement?.parentElement;
-        if (container) {
-          const link = container.querySelector('a[href*="/reel/"], a[href*="/p/"]');
-          if (link) {
-            const href = link.getAttribute('href');
-            if (href) return { url: new URL(href, window.location.origin).href, platform: 'instagram', direct_media_url: findInstagramMediaUrl(container) || directMediaUrl };
-          }
-        }
-      }
+      return { url: targetUrl, platform: 'instagram', direct_media_url: directMediaUrl };
     }
 
     // 4. Envato Elements & AudioJungle
@@ -948,11 +975,10 @@
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const article = bar.closest('article') || bar.closest('section');
-          const postLink = article ? article.querySelector('a[href*="/p/"], a[href*="/reel/"]') : null;
-          const url = postLink ? `https://www.instagram.com${postLink.getAttribute('href')}` : window.location.href;
-          const directMediaUrl = findInstagramMediaUrl(article || bar.closest('div'));
-          downloadMedia(url, btn, 'Download', directMediaUrl ? { direct_media_url: directMediaUrl } : {});
+          const container = bar.closest('article') || bar.closest('section') || bar.parentElement;
+          const targetUrl = getInstagramPostUrl(container, btn);
+          const directMediaUrl = findInstagramMediaUrl(container);
+          downloadMedia(targetUrl, btn, 'Download', directMediaUrl ? { direct_media_url: directMediaUrl } : {});
         });
 
         const bookmarkContainer = bookmarkSvg.closest('div[role="button"]') || bookmarkSvg.parentElement;
@@ -982,8 +1008,7 @@
             e.preventDefault();
             e.stopPropagation();
             const reelContainer = stack.closest('div[role="dialog"]') || stack.closest('article') || stack.closest('section') || stack.parentElement?.parentElement || document;
-            const link = reelContainer.querySelector ? reelContainer.querySelector('a[href*="/reel/"], a[href*="/p/"]') : null;
-            const targetUrl = link && link.getAttribute('href') ? `https://www.instagram.com${link.getAttribute('href')}` : window.location.href;
+            const targetUrl = getInstagramPostUrl(reelContainer, btn);
             const directMediaUrl = findInstagramMediaUrl(reelContainer);
             downloadMedia(targetUrl, btn, 'Download', directMediaUrl ? { direct_media_url: directMediaUrl } : {});
           });
