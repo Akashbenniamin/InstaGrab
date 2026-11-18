@@ -1462,7 +1462,7 @@ class Downloader:
                 streams = probe_data.get('streams', [])
                 has_video = any(s.get('codec_type') == 'video' and (s.get('width') or 0) > 0 for s in streams)
                 file_sz = os.path.getsize(temp_file)
-                if not has_video or file_sz < 100 * 1024:
+                if not has_video or file_sz < 10 * 1024:
                     logging.warning(f"Direct media download for {url} has no video track or is too small (has_video={has_video}, size={file_sz}B). Discarding partial file and falling back to standard engine.")
                     try:
                         os.remove(temp_file)
